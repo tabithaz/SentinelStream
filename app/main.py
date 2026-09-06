@@ -18,5 +18,5 @@ def process_event(event: TelemetryEvent) -> dict:
 
 
 @app.get("/events/stats")
-def event_stats() -> dict[str, int]:
+def event_stats() -> dict:
     return processor.stats()
