@@ -88,3 +88,51 @@ def test_custom_threshold_metric_names_are_case_insensitive() -> None:
 def test_invalid_threshold_range_is_rejected() -> None:
     with pytest.raises(ValueError, match="minimum exceeds maximum"):
         EventProcessor({"temperature": (100.0, 0.0)})
+
+
+def test_recent_events_are_returned_newest_first() -> None:
+    processor = EventProcessor()
+    processor.process(event("temperature", 70.0))
+    processor.process(event("pressure", 90.0))
+    processor.process(event("voltage", 12.0))
+
+    recent = processor.recent_events(limit=2)
+
+    assert [item["metric"] for item in recent] == ["voltage", "pressure"]
+
+
+def test_recent_event_history_is_bounded() -> None:
+    processor = EventProcessor(history_size=2)
+    processor.process(event("temperature", 70.0))
+    processor.process(event("pressure", 90.0))
+    processor.process(event("voltage", 12.0))
+
+    recent = processor.recent_events(limit=10)
+
+    assert [item["metric"] for item in recent] == ["voltage", "pressure"]
+
+
+def test_recent_events_support_metric_and_anomaly_filters() -> None:
+    processor = EventProcessor()
+    processor.process(event("Temperature", 70.0))
+    processor.process(event("temperature", 150.0))
+    processor.process(event("pressure", 300.0))
+
+    recent = processor.recent_events(
+        limit=10,
+        metric="TEMPERATURE",
+        anomalies_only=True,
+    )
+
+    assert len(recent) == 1
+    assert recent[0]["metric"] == "temperature"
+    assert recent[0]["anomaly"] is True
+
+
+def test_invalid_history_size_and_recent_limit_are_rejected() -> None:
+    with pytest.raises(ValueError, match="history_size"):
+        EventProcessor(history_size=0)
+
+    processor = EventProcessor()
+    with pytest.raises(ValueError, match="limit"):
+        processor.recent_events(limit=0)

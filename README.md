@@ -30,6 +30,7 @@ Live Dashboard
 - Structured telemetry event model
 - Event validation and normalization
 - Configurable anomaly detection rules
+- Bounded recent-event history with metric and anomaly filtering
 - Kafka producer and consumer foundation
 - PostgreSQL-ready persistence layer
 - Health and event API endpoints
@@ -81,7 +82,10 @@ docker compose up --build
 | --- | --- | --- |
 | GET | `/health` | Service health check |
 | POST | `/events` | Validate and process an event |
+| GET | `/events/recent` | Read recent events with optional `metric` and `anomalies_only` filters |
 | GET | `/events/stats` | Processing statistics |
+
+Recent events are returned newest first. The `limit` query parameter accepts values from 1 to 1000, and the in-memory history is bounded so long-running processes do not accumulate events indefinitely.
 
 ## Event Format
 

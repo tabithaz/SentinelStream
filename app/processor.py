@@ -1,4 +1,4 @@
-from collections import defaultdict
+from collections import defaultdict, deque
 from collections.abc import Mapping
 
 from app.models import TelemetryEvent
@@ -15,13 +15,18 @@ class EventProcessor:
     def __init__(
         self,
         thresholds: Mapping[str, tuple[float, float]] | None = None,
+        history_size: int = 1000,
     ) -> None:
+        if history_size <= 0:
+            raise ValueError("history_size must be greater than zero")
+
         configured = thresholds if thresholds is not None else DEFAULT_THRESHOLDS
         self._thresholds = self._normalize_thresholds(configured)
         self._processed = 0
         self._anomalies = 0
         self._metric_counts: dict[str, int] = defaultdict(int)
         self._metric_anomalies: dict[str, int] = defaultdict(int)
+        self._recent_events: deque[dict] = deque(maxlen=history_size)
 
     def process(self, event: TelemetryEvent) -> dict:
         metric = event.metric.lower()
@@ -34,7 +39,7 @@ class EventProcessor:
             self._anomalies += 1
             self._metric_anomalies[metric] += 1
 
-        return {
+        result = {
             "accepted": True,
             "anomaly": anomaly,
             "source": event.source,
@@ -42,6 +47,32 @@ class EventProcessor:
             "value": event.value,
             "timestamp": event.timestamp.isoformat(),
         }
+        self._recent_events.append(result.copy())
+        return result
+
+    def recent_events(
+        self,
+        limit: int = 100,
+        metric: str | None = None,
+        anomalies_only: bool = False,
+    ) -> list[dict]:
+        if limit <= 0:
+            raise ValueError("limit must be greater than zero")
+
+        normalized_metric = metric.lower() if metric is not None else None
+        matches: list[dict] = []
+
+        for item in reversed(self._recent_events):
+            if normalized_metric is not None and item["metric"].lower() != normalized_metric:
+                continue
+            if anomalies_only and not item["anomaly"]:
+                continue
+
+            matches.append(item.copy())
+            if len(matches) == limit:
+                break
+
+        return matches
 
     def stats(self) -> dict:
         metrics = {
