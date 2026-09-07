@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 
+import pytest
+
 from app.models import TelemetryEvent
 from app.processor import EventProcessor
 
@@ -67,3 +69,22 @@ def test_empty_stats_have_zero_anomaly_rate() -> None:
     assert stats["anomalies"] == 0
     assert stats["anomaly_rate"] == 0.0
     assert stats["metrics"] == {}
+
+
+def test_custom_thresholds_override_defaults() -> None:
+    processor = EventProcessor({"temperature": (10.0, 20.0)})
+
+    assert processor.process(event("temperature", 25.0))["anomaly"] is True
+    assert processor.process(event("temperature", 15.0))["anomaly"] is False
+    assert processor.process(event("voltage", 100.0))["anomaly"] is False
+
+
+def test_custom_threshold_metric_names_are_case_insensitive() -> None:
+    processor = EventProcessor({"Temperature": (0.0, 10.0)})
+
+    assert processor.process(event("TEMPERATURE", 11.0))["anomaly"] is True
+
+
+def test_invalid_threshold_range_is_rejected() -> None:
+    with pytest.raises(ValueError, match="minimum exceeds maximum"):
+        EventProcessor({"temperature": (100.0, 0.0)})
