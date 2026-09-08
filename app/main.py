@@ -3,7 +3,7 @@ from fastapi import FastAPI, Query
 from app.models import TelemetryEvent
 from app.processor import EventProcessor
 
-app = FastAPI(title="SentinelStream", version="0.1.0")
+app = FastAPI(title="SentinelStream", version="0.2.0")
 processor = EventProcessor()
 
 
@@ -30,6 +30,13 @@ def recent_events(
         source=source,
         anomalies_only=anomalies_only,
     )
+
+
+@app.get("/events/sources")
+def ranked_sources(
+    limit: int = Query(default=10, ge=1, le=100),
+) -> list[dict]:
+    return processor.ranked_sources(limit=limit)
 
 
 @app.get("/events/stats")
