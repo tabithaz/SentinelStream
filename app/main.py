@@ -21,11 +21,13 @@ def process_event(event: TelemetryEvent) -> dict:
 def recent_events(
     limit: int = Query(default=100, ge=1, le=1000),
     metric: str | None = None,
+    source: str | None = None,
     anomalies_only: bool = False,
 ) -> list[dict]:
     return processor.recent_events(
         limit=limit,
         metric=metric,
+        source=source,
         anomalies_only=anomalies_only,
     )
 

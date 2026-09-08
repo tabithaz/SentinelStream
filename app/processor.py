@@ -30,6 +30,8 @@ class EventProcessor:
         self._duplicates = 0
         self._metric_counts: dict[str, int] = defaultdict(int)
         self._metric_anomalies: dict[str, int] = defaultdict(int)
+        self._source_counts: dict[str, int] = defaultdict(int)
+        self._source_anomalies: dict[str, int] = defaultdict(int)
         self._recent_events: deque[dict] = deque(maxlen=history_size)
         self._deduplication_size = deduplication_size
         self._event_keys: deque[tuple[str, str, float, str]] = deque()
@@ -53,11 +55,13 @@ class EventProcessor:
         self._remember_event_key(event_key)
         self._processed += 1
         self._metric_counts[metric] += 1
+        self._source_counts[event.source] += 1
 
         anomaly = self._is_anomaly(event)
         if anomaly:
             self._anomalies += 1
             self._metric_anomalies[metric] += 1
+            self._source_anomalies[event.source] += 1
 
         result = {
             "accepted": True,
@@ -75,6 +79,7 @@ class EventProcessor:
         self,
         limit: int = 100,
         metric: str | None = None,
+        source: str | None = None,
         anomalies_only: bool = False,
     ) -> list[dict]:
         if limit <= 0:
@@ -85,6 +90,8 @@ class EventProcessor:
 
         for item in reversed(self._recent_events):
             if normalized_metric is not None and item["metric"].lower() != normalized_metric:
+                continue
+            if source is not None and item["source"] != source:
                 continue
             if anomalies_only and not item["anomaly"]:
                 continue
@@ -104,6 +111,14 @@ class EventProcessor:
             }
             for metric, count in sorted(self._metric_counts.items())
         }
+        sources = {
+            source: {
+                "processed": count,
+                "anomalies": self._source_anomalies[source],
+                "anomaly_rate": self._source_anomalies[source] / count,
+            }
+            for source, count in sorted(self._source_counts.items())
+        }
 
         return {
             "processed": self._processed,
@@ -113,6 +128,7 @@ class EventProcessor:
                 self._anomalies / self._processed if self._processed else 0.0
             ),
             "metrics": metrics,
+            "sources": sources,
         }
 
     def _is_anomaly(self, event: TelemetryEvent) -> bool:
