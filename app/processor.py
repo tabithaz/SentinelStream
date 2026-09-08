@@ -102,6 +102,29 @@ class EventProcessor:
 
         return matches
 
+    def ranked_sources(self, limit: int = 10) -> list[dict]:
+        if limit <= 0:
+            raise ValueError("limit must be greater than zero")
+
+        ranked = [
+            {
+                "source": source,
+                "processed": count,
+                "anomalies": self._source_anomalies[source],
+                "anomaly_rate": self._source_anomalies[source] / count,
+            }
+            for source, count in self._source_counts.items()
+        ]
+        ranked.sort(
+            key=lambda item: (
+                -item["anomaly_rate"],
+                -item["anomalies"],
+                -item["processed"],
+                item["source"],
+            )
+        )
+        return ranked[:limit]
+
     def stats(self) -> dict:
         metrics = {
             metric: {
