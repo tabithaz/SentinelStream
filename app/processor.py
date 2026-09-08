@@ -16,21 +16,41 @@ class EventProcessor:
         self,
         thresholds: Mapping[str, tuple[float, float]] | None = None,
         history_size: int = 1000,
+        deduplication_size: int = 5000,
     ) -> None:
         if history_size <= 0:
             raise ValueError("history_size must be greater than zero")
+        if deduplication_size <= 0:
+            raise ValueError("deduplication_size must be greater than zero")
 
         configured = thresholds if thresholds is not None else DEFAULT_THRESHOLDS
         self._thresholds = self._normalize_thresholds(configured)
         self._processed = 0
         self._anomalies = 0
+        self._duplicates = 0
         self._metric_counts: dict[str, int] = defaultdict(int)
         self._metric_anomalies: dict[str, int] = defaultdict(int)
         self._recent_events: deque[dict] = deque(maxlen=history_size)
+        self._deduplication_size = deduplication_size
+        self._event_keys: deque[tuple[str, str, float, str]] = deque()
+        self._event_key_set: set[tuple[str, str, float, str]] = set()
 
     def process(self, event: TelemetryEvent) -> dict:
         metric = event.metric.lower()
+        event_key = self._event_key(event)
 
+        if event_key in self._event_key_set:
+            self._duplicates += 1
+            return {
+                "accepted": False,
+                "duplicate": True,
+                "source": event.source,
+                "metric": event.metric,
+                "value": event.value,
+                "timestamp": event.timestamp.isoformat(),
+            }
+
+        self._remember_event_key(event_key)
         self._processed += 1
         self._metric_counts[metric] += 1
 
@@ -41,6 +61,7 @@ class EventProcessor:
 
         result = {
             "accepted": True,
+            "duplicate": False,
             "anomaly": anomaly,
             "source": event.source,
             "metric": event.metric,
@@ -87,6 +108,7 @@ class EventProcessor:
         return {
             "processed": self._processed,
             "anomalies": self._anomalies,
+            "duplicates": self._duplicates,
             "anomaly_rate": (
                 self._anomalies / self._processed if self._processed else 0.0
             ),
@@ -100,6 +122,23 @@ class EventProcessor:
 
         minimum, maximum = bounds
         return not minimum <= event.value <= maximum
+
+    def _remember_event_key(self, event_key: tuple[str, str, float, str]) -> None:
+        if len(self._event_keys) == self._deduplication_size:
+            expired = self._event_keys.popleft()
+            self._event_key_set.remove(expired)
+
+        self._event_keys.append(event_key)
+        self._event_key_set.add(event_key)
+
+    @staticmethod
+    def _event_key(event: TelemetryEvent) -> tuple[str, str, float, str]:
+        return (
+            event.source,
+            event.metric.lower(),
+            event.value,
+            event.timestamp.isoformat(),
+        )
 
     @staticmethod
     def _normalize_thresholds(

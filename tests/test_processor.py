@@ -67,6 +67,7 @@ def test_empty_stats_have_zero_anomaly_rate() -> None:
 
     assert stats["processed"] == 0
     assert stats["anomalies"] == 0
+    assert stats["duplicates"] == 0
     assert stats["anomaly_rate"] == 0.0
     assert stats["metrics"] == {}
 
@@ -136,3 +137,80 @@ def test_invalid_history_size_and_recent_limit_are_rejected() -> None:
     processor = EventProcessor()
     with pytest.raises(ValueError, match="limit"):
         processor.recent_events(limit=0)
+
+
+def test_duplicate_event_is_rejected_without_inflating_stats() -> None:
+    processor = EventProcessor()
+    telemetry = event("temperature", 150.0)
+
+    first = processor.process(telemetry)
+    duplicate = processor.process(telemetry)
+    stats = processor.stats()
+
+    assert first["accepted"] is True
+    assert first["duplicate"] is False
+    assert duplicate["accepted"] is False
+    assert duplicate["duplicate"] is True
+    assert stats["processed"] == 1
+    assert stats["anomalies"] == 1
+    assert stats["duplicates"] == 1
+    assert len(processor.recent_events()) == 1
+
+
+def test_deduplication_normalizes_metric_case() -> None:
+    processor = EventProcessor()
+    timestamp = datetime.now(timezone.utc)
+    first = TelemetryEvent(
+        source="sensor-a",
+        metric="Temperature",
+        value=72.0,
+        timestamp=timestamp,
+    )
+    replay = TelemetryEvent(
+        source="sensor-a",
+        metric="temperature",
+        value=72.0,
+        timestamp=timestamp,
+    )
+
+    processor.process(first)
+    result = processor.process(replay)
+
+    assert result["duplicate"] is True
+
+
+def test_deduplication_distinguishes_source_value_and_timestamp() -> None:
+    processor = EventProcessor()
+    timestamp = datetime.now(timezone.utc)
+    base = TelemetryEvent(
+        source="sensor-a",
+        metric="temperature",
+        value=72.0,
+        timestamp=timestamp,
+    )
+
+    assert processor.process(base)["accepted"] is True
+    assert processor.process(base.model_copy(update={"source": "sensor-b"}))["accepted"] is True
+    assert processor.process(base.model_copy(update={"value": 73.0}))["accepted"] is True
+    assert processor.stats()["processed"] == 3
+
+
+def test_deduplication_window_is_bounded() -> None:
+    processor = EventProcessor(deduplication_size=2)
+    first = event("temperature", 70.0)
+    second = event("pressure", 90.0)
+    third = event("voltage", 12.0)
+
+    processor.process(first)
+    processor.process(second)
+    processor.process(third)
+
+    replay_after_eviction = processor.process(first)
+
+    assert replay_after_eviction["accepted"] is True
+    assert processor.stats()["duplicates"] == 0
+
+
+def test_invalid_deduplication_size_is_rejected() -> None:
+    with pytest.raises(ValueError, match="deduplication_size"):
+        EventProcessor(deduplication_size=0)
