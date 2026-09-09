@@ -13,7 +13,8 @@ def test_health_summary_aggregates_source_health() -> None:
         {"source": "alpha", "metric": "temperature", "value": 26.0, "timestamp": "2026-09-09T10:00:01Z"},
         {"source": "bravo", "metric": "temperature", "value": 200.0, "timestamp": "2026-09-09T10:00:02Z"},
         {"source": "bravo", "metric": "temperature", "value": 20.0, "timestamp": "2026-09-09T10:00:03Z"},
-        {"source": "charlie", "metric": "pressure", "value": 300.0, "timestamp": "2026-09-09T10:00:04Z"},
+        {"source": "bravo", "metric": "temperature", "value": 21.0, "timestamp": "2026-09-09T10:00:04Z"},
+        {"source": "charlie", "metric": "pressure", "value": 300.0, "timestamp": "2026-09-09T10:00:05Z"},
     ]
     response = client.post("/events/batch", json=events)
     assert response.status_code == 200
