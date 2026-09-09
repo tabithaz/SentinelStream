@@ -5,7 +5,7 @@ from fastapi import Body, FastAPI, Query
 from app.models import TelemetryEvent
 from app.processor import EventProcessor
 
-app = FastAPI(title="SentinelStream", version="0.4.0")
+app = FastAPI(title="SentinelStream", version="0.5.0")
 processor = EventProcessor()
 
 
@@ -56,6 +56,25 @@ def ranked_metrics(
     limit: int = Query(default=10, ge=1, le=100),
 ) -> list[dict]:
     return processor.ranked_metrics(limit=limit)
+
+
+@app.get("/events/health-summary")
+def health_summary() -> dict:
+    sources = processor.ranked_sources(limit=100)
+    counts = {"healthy": 0, "watch": 0, "critical": 0}
+    for source in sources:
+        counts[source["health"]] += 1
+
+    monitored = len(sources)
+    degraded = counts["watch"] + counts["critical"]
+    return {
+        "sources_monitored": monitored,
+        "healthy_sources": counts["healthy"],
+        "watch_sources": counts["watch"],
+        "critical_sources": counts["critical"],
+        "degraded_sources": degraded,
+        "degraded_share": degraded / monitored if monitored else 0.0,
+    }
 
 
 @app.get("/events/stats")
