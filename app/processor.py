@@ -106,15 +106,20 @@ class EventProcessor:
         if limit <= 0:
             raise ValueError("limit must be greater than zero")
 
-        ranked = [
-            {
-                "source": source,
-                "processed": count,
-                "anomalies": self._source_anomalies[source],
-                "anomaly_rate": self._source_anomalies[source] / count,
-            }
-            for source, count in self._source_counts.items()
-        ]
+        ranked = []
+        for source, count in self._source_counts.items():
+            anomalies = self._source_anomalies[source]
+            anomaly_rate = anomalies / count
+            ranked.append(
+                {
+                    "source": source,
+                    "processed": count,
+                    "anomalies": anomalies,
+                    "anomaly_rate": anomaly_rate,
+                    "health": self._source_health(anomaly_rate),
+                }
+            )
+
         ranked.sort(
             key=lambda item: (
                 -item["anomaly_rate"],
@@ -134,14 +139,16 @@ class EventProcessor:
             }
             for metric, count in sorted(self._metric_counts.items())
         }
-        sources = {
-            source: {
+        sources = {}
+        for source, count in sorted(self._source_counts.items()):
+            anomalies = self._source_anomalies[source]
+            anomaly_rate = anomalies / count
+            sources[source] = {
                 "processed": count,
-                "anomalies": self._source_anomalies[source],
-                "anomaly_rate": self._source_anomalies[source] / count,
+                "anomalies": anomalies,
+                "anomaly_rate": anomaly_rate,
+                "health": self._source_health(anomaly_rate),
             }
-            for source, count in sorted(self._source_counts.items())
-        }
 
         return {
             "processed": self._processed,
@@ -161,6 +168,14 @@ class EventProcessor:
 
         minimum, maximum = bounds
         return not minimum <= event.value <= maximum
+
+    @staticmethod
+    def _source_health(anomaly_rate: float) -> str:
+        if anomaly_rate >= 0.5:
+            return "critical"
+        if anomaly_rate >= 0.2:
+            return "watch"
+        return "healthy"
 
     def _remember_event_key(self, event_key: tuple[str, str, float, str]) -> None:
         if len(self._event_keys) == self._deduplication_size:
