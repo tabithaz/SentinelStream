@@ -25,11 +25,13 @@ def test_stats_include_per_source_counts_and_rates() -> None:
         "processed": 2,
         "anomalies": 1,
         "anomaly_rate": 0.5,
+        "health": "critical",
     }
     assert stats["sources"]["sensor-b"] == {
         "processed": 1,
         "anomalies": 0,
         "anomaly_rate": 0.0,
+        "health": "healthy",
     }
 
 
