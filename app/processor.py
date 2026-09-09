@@ -135,6 +135,35 @@ class EventProcessor:
         )
         return ranked[:limit]
 
+    def ranked_metrics(self, limit: int = 10) -> list[dict]:
+        if limit <= 0:
+            raise ValueError("limit must be greater than zero")
+
+        with self._lock:
+            ranked = []
+            for metric, count in self._metric_counts.items():
+                anomalies = self._metric_anomalies[metric]
+                anomaly_rate = anomalies / count
+                ranked.append(
+                    {
+                        "metric": metric,
+                        "processed": count,
+                        "anomalies": anomalies,
+                        "anomaly_rate": anomaly_rate,
+                        "health": self._source_health(anomaly_rate),
+                    }
+                )
+
+        ranked.sort(
+            key=lambda item: (
+                -item["anomaly_rate"],
+                -item["anomalies"],
+                -item["processed"],
+                item["metric"],
+            )
+        )
+        return ranked[:limit]
+
     def stats(self) -> dict:
         with self._lock:
             metrics = {
