@@ -24,6 +24,22 @@ def test_ranked_sources_orders_by_anomaly_rate() -> None:
     assert [item["source"] for item in ranked] == ["vehicle-b", "vehicle-a"]
     assert ranked[0]["anomaly_rate"] == 1.0
     assert ranked[1]["anomaly_rate"] == 0.5
+    assert ranked[0]["health"] == "critical"
+    assert ranked[1]["health"] == "critical"
+
+
+def test_ranked_sources_classifies_source_health() -> None:
+    processor = EventProcessor()
+    for second, value in enumerate([80.0, 80.0, 80.0, 80.0, 150.0], start=1):
+        processor.process(event("vehicle-watch", value, second))
+    processor.process(event("vehicle-healthy", 80.0, 10))
+
+    ranked = processor.ranked_sources()
+    by_source = {item["source"]: item for item in ranked}
+
+    assert by_source["vehicle-watch"]["anomaly_rate"] == 0.2
+    assert by_source["vehicle-watch"]["health"] == "watch"
+    assert by_source["vehicle-healthy"]["health"] == "healthy"
 
 
 def test_ranked_sources_applies_limit() -> None:
