@@ -78,6 +78,31 @@ class EventProcessor:
             self._recent_events.append(result.copy())
             return result
 
+    def process_many(self, events: list[TelemetryEvent]) -> dict:
+        if not events:
+            raise ValueError("events must contain at least one telemetry event")
+        if len(events) > 1000:
+            raise ValueError("events cannot contain more than 1000 telemetry events")
+
+        with self._lock:
+            results = [self.process(event) for event in events]
+
+        accepted = sum(1 for result in results if result["accepted"])
+        duplicates = len(results) - accepted
+        anomalies = sum(
+            1
+            for result in results
+            if result["accepted"] and result["anomaly"]
+        )
+
+        return {
+            "received": len(results),
+            "accepted": accepted,
+            "duplicates": duplicates,
+            "anomalies": anomalies,
+            "results": results,
+        }
+
     def recent_events(
         self,
         limit: int = 100,

@@ -1,9 +1,11 @@
-from fastapi import FastAPI, Query
+from typing import Annotated
+
+from fastapi import Body, FastAPI, Query
 
 from app.models import TelemetryEvent
 from app.processor import EventProcessor
 
-app = FastAPI(title="SentinelStream", version="0.3.0")
+app = FastAPI(title="SentinelStream", version="0.4.0")
 processor = EventProcessor()
 
 
@@ -15,6 +17,16 @@ def health() -> dict[str, str]:
 @app.post("/events")
 def process_event(event: TelemetryEvent) -> dict:
     return processor.process(event)
+
+
+@app.post("/events/batch")
+def process_event_batch(
+    events: Annotated[
+        list[TelemetryEvent],
+        Body(min_length=1, max_length=1000),
+    ],
+) -> dict:
+    return processor.process_many(events)
 
 
 @app.get("/events/recent")
