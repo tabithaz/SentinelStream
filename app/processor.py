@@ -1,5 +1,6 @@
 from collections import defaultdict, deque
 from collections.abc import Mapping
+from threading import RLock
 
 from app.models import TelemetryEvent
 
@@ -36,44 +37,46 @@ class EventProcessor:
         self._deduplication_size = deduplication_size
         self._event_keys: deque[tuple[str, str, float, str]] = deque()
         self._event_key_set: set[tuple[str, str, float, str]] = set()
+        self._lock = RLock()
 
     def process(self, event: TelemetryEvent) -> dict:
-        metric = event.metric.lower()
-        event_key = self._event_key(event)
+        with self._lock:
+            metric = event.metric.lower()
+            event_key = self._event_key(event)
 
-        if event_key in self._event_key_set:
-            self._duplicates += 1
-            return {
-                "accepted": False,
-                "duplicate": True,
+            if event_key in self._event_key_set:
+                self._duplicates += 1
+                return {
+                    "accepted": False,
+                    "duplicate": True,
+                    "source": event.source,
+                    "metric": event.metric,
+                    "value": event.value,
+                    "timestamp": event.timestamp.isoformat(),
+                }
+
+            self._remember_event_key(event_key)
+            self._processed += 1
+            self._metric_counts[metric] += 1
+            self._source_counts[event.source] += 1
+
+            anomaly = self._is_anomaly(event)
+            if anomaly:
+                self._anomalies += 1
+                self._metric_anomalies[metric] += 1
+                self._source_anomalies[event.source] += 1
+
+            result = {
+                "accepted": True,
+                "duplicate": False,
+                "anomaly": anomaly,
                 "source": event.source,
                 "metric": event.metric,
                 "value": event.value,
                 "timestamp": event.timestamp.isoformat(),
             }
-
-        self._remember_event_key(event_key)
-        self._processed += 1
-        self._metric_counts[metric] += 1
-        self._source_counts[event.source] += 1
-
-        anomaly = self._is_anomaly(event)
-        if anomaly:
-            self._anomalies += 1
-            self._metric_anomalies[metric] += 1
-            self._source_anomalies[event.source] += 1
-
-        result = {
-            "accepted": True,
-            "duplicate": False,
-            "anomaly": anomaly,
-            "source": event.source,
-            "metric": event.metric,
-            "value": event.value,
-            "timestamp": event.timestamp.isoformat(),
-        }
-        self._recent_events.append(result.copy())
-        return result
+            self._recent_events.append(result.copy())
+            return result
 
     def recent_events(
         self,
@@ -88,17 +91,18 @@ class EventProcessor:
         normalized_metric = metric.lower() if metric is not None else None
         matches: list[dict] = []
 
-        for item in reversed(self._recent_events):
-            if normalized_metric is not None and item["metric"].lower() != normalized_metric:
-                continue
-            if source is not None and item["source"] != source:
-                continue
-            if anomalies_only and not item["anomaly"]:
-                continue
+        with self._lock:
+            for item in reversed(self._recent_events):
+                if normalized_metric is not None and item["metric"].lower() != normalized_metric:
+                    continue
+                if source is not None and item["source"] != source:
+                    continue
+                if anomalies_only and not item["anomaly"]:
+                    continue
 
-            matches.append(item.copy())
-            if len(matches) == limit:
-                break
+                matches.append(item.copy())
+                if len(matches) == limit:
+                    break
 
         return matches
 
@@ -106,19 +110,20 @@ class EventProcessor:
         if limit <= 0:
             raise ValueError("limit must be greater than zero")
 
-        ranked = []
-        for source, count in self._source_counts.items():
-            anomalies = self._source_anomalies[source]
-            anomaly_rate = anomalies / count
-            ranked.append(
-                {
-                    "source": source,
-                    "processed": count,
-                    "anomalies": anomalies,
-                    "anomaly_rate": anomaly_rate,
-                    "health": self._source_health(anomaly_rate),
-                }
-            )
+        with self._lock:
+            ranked = []
+            for source, count in self._source_counts.items():
+                anomalies = self._source_anomalies[source]
+                anomaly_rate = anomalies / count
+                ranked.append(
+                    {
+                        "source": source,
+                        "processed": count,
+                        "anomalies": anomalies,
+                        "anomaly_rate": anomaly_rate,
+                        "health": self._source_health(anomaly_rate),
+                    }
+                )
 
         ranked.sort(
             key=lambda item: (
@@ -131,35 +136,36 @@ class EventProcessor:
         return ranked[:limit]
 
     def stats(self) -> dict:
-        metrics = {
-            metric: {
-                "processed": count,
-                "anomalies": self._metric_anomalies[metric],
-                "anomaly_rate": self._metric_anomalies[metric] / count,
+        with self._lock:
+            metrics = {
+                metric: {
+                    "processed": count,
+                    "anomalies": self._metric_anomalies[metric],
+                    "anomaly_rate": self._metric_anomalies[metric] / count,
+                }
+                for metric, count in sorted(self._metric_counts.items())
             }
-            for metric, count in sorted(self._metric_counts.items())
-        }
-        sources = {}
-        for source, count in sorted(self._source_counts.items()):
-            anomalies = self._source_anomalies[source]
-            anomaly_rate = anomalies / count
-            sources[source] = {
-                "processed": count,
-                "anomalies": anomalies,
-                "anomaly_rate": anomaly_rate,
-                "health": self._source_health(anomaly_rate),
-            }
+            sources = {}
+            for source, count in sorted(self._source_counts.items()):
+                anomalies = self._source_anomalies[source]
+                anomaly_rate = anomalies / count
+                sources[source] = {
+                    "processed": count,
+                    "anomalies": anomalies,
+                    "anomaly_rate": anomaly_rate,
+                    "health": self._source_health(anomaly_rate),
+                }
 
-        return {
-            "processed": self._processed,
-            "anomalies": self._anomalies,
-            "duplicates": self._duplicates,
-            "anomaly_rate": (
-                self._anomalies / self._processed if self._processed else 0.0
-            ),
-            "metrics": metrics,
-            "sources": sources,
-        }
+            return {
+                "processed": self._processed,
+                "anomalies": self._anomalies,
+                "duplicates": self._duplicates,
+                "anomaly_rate": (
+                    self._anomalies / self._processed if self._processed else 0.0
+                ),
+                "metrics": metrics,
+                "sources": sources,
+            }
 
     def _is_anomaly(self, event: TelemetryEvent) -> bool:
         bounds = self._thresholds.get(event.metric.lower())
