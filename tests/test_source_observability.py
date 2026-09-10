@@ -26,12 +26,18 @@ def test_stats_include_per_source_counts_and_rates() -> None:
         "anomalies": 1,
         "anomaly_rate": 0.5,
         "health": "critical",
+        "out_of_order": 0,
+        "out_of_order_rate": 0.0,
+        "ordering_health": "healthy",
     }
     assert stats["sources"]["sensor-b"] == {
         "processed": 1,
         "anomalies": 0,
         "anomaly_rate": 0.0,
         "health": "healthy",
+        "out_of_order": 0,
+        "out_of_order_rate": 0.0,
+        "ordering_health": "healthy",
     }
 
 
@@ -63,3 +69,4 @@ def test_duplicate_events_do_not_inflate_source_stats() -> None:
     source_stats = processor.stats()["sources"]["sensor-a"]
     assert source_stats["processed"] == 1
     assert source_stats["anomalies"] == 1
+    assert source_stats["out_of_order"] == 0
