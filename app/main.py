@@ -4,8 +4,9 @@ from fastapi import Body, FastAPI, Query
 
 from app.models import TelemetryEvent
 from app.processor import EventProcessor
+from app.reliability import classify_stream_reliability
 
-app = FastAPI(title="SentinelStream", version="0.6.0")
+app = FastAPI(title="SentinelStream", version="0.7.0")
 processor = EventProcessor()
 
 
@@ -100,6 +101,24 @@ def quality_summary() -> dict:
         "duplicate_rate": duplicate_rate,
         "anomaly_rate": anomaly_rate,
         "quality": quality,
+    }
+
+
+@app.get("/events/reliability")
+def stream_reliability() -> dict:
+    stats = processor.stats()
+    received = stats["processed"] + stats["duplicates"]
+    duplicate_rate = stats["duplicates"] / received if received else 0.0
+    result = classify_stream_reliability(
+        anomaly_rate=stats["anomaly_rate"],
+        duplicate_rate=duplicate_rate,
+        out_of_order_rate=stats["out_of_order_rate"],
+    )
+    return {
+        **result,
+        "anomaly_rate": stats["anomaly_rate"],
+        "duplicate_rate": duplicate_rate,
+        "out_of_order_rate": stats["out_of_order_rate"],
     }
 
 
