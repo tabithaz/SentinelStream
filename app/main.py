@@ -5,7 +5,7 @@ from fastapi import Body, FastAPI, Query
 from app.models import TelemetryEvent
 from app.processor import EventProcessor
 
-app = FastAPI(title="SentinelStream", version="0.5.0")
+app = FastAPI(title="SentinelStream", version="0.6.0")
 processor = EventProcessor()
 
 
@@ -74,6 +74,32 @@ def health_summary() -> dict:
         "critical_sources": counts["critical"],
         "degraded_sources": degraded,
         "degraded_share": degraded / monitored if monitored else 0.0,
+    }
+
+
+@app.get("/events/quality-summary")
+def quality_summary() -> dict:
+    stats = processor.stats()
+    received = stats["processed"] + stats["duplicates"]
+    duplicate_rate = stats["duplicates"] / received if received else 0.0
+    anomaly_rate = stats["anomaly_rate"]
+
+    if duplicate_rate >= 0.25 or anomaly_rate >= 0.5:
+        quality = "unreliable"
+    elif duplicate_rate >= 0.10 or anomaly_rate >= 0.2:
+        quality = "degraded"
+    else:
+        quality = "healthy"
+
+    return {
+        "received": received,
+        "accepted": stats["processed"],
+        "duplicates": stats["duplicates"],
+        "anomalies": stats["anomalies"],
+        "acceptance_rate": stats["processed"] / received if received else 0.0,
+        "duplicate_rate": duplicate_rate,
+        "anomaly_rate": anomaly_rate,
+        "quality": quality,
     }
 
 
