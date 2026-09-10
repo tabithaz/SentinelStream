@@ -1,4 +1,5 @@
 from collections import defaultdict, deque
+from datetime import datetime
 from collections.abc import Mapping
 from threading import RLock
 
@@ -29,10 +30,12 @@ class EventProcessor:
         self._processed = 0
         self._anomalies = 0
         self._duplicates = 0
+        self._out_of_order = 0
         self._metric_counts: dict[str, int] = defaultdict(int)
         self._metric_anomalies: dict[str, int] = defaultdict(int)
         self._source_counts: dict[str, int] = defaultdict(int)
         self._source_anomalies: dict[str, int] = defaultdict(int)
+        self._latest_timestamps: dict[tuple[str, str], datetime] = {}
         self._recent_events: deque[dict] = deque(maxlen=history_size)
         self._deduplication_size = deduplication_size
         self._event_keys: deque[tuple[str, str, float, str]] = deque()
@@ -55,6 +58,16 @@ class EventProcessor:
                     "timestamp": event.timestamp.isoformat(),
                 }
 
+            stream_key = (event.source, metric)
+            latest_timestamp = self._latest_timestamps.get(stream_key)
+            out_of_order = (
+                latest_timestamp is not None and event.timestamp < latest_timestamp
+            )
+            if out_of_order:
+                self._out_of_order += 1
+            elif latest_timestamp is None or event.timestamp > latest_timestamp:
+                self._latest_timestamps[stream_key] = event.timestamp
+
             self._remember_event_key(event_key)
             self._processed += 1
             self._metric_counts[metric] += 1
@@ -70,6 +83,7 @@ class EventProcessor:
                 "accepted": True,
                 "duplicate": False,
                 "anomaly": anomaly,
+                "out_of_order": out_of_order,
                 "source": event.source,
                 "metric": event.metric,
                 "value": event.value,
@@ -94,12 +108,18 @@ class EventProcessor:
             for result in results
             if result["accepted"] and result["anomaly"]
         )
+        out_of_order = sum(
+            1
+            for result in results
+            if result["accepted"] and result["out_of_order"]
+        )
 
         return {
             "received": len(results),
             "accepted": accepted,
             "duplicates": duplicates,
             "anomalies": anomalies,
+            "out_of_order": out_of_order,
             "results": results,
         }
 
@@ -214,8 +234,12 @@ class EventProcessor:
                 "processed": self._processed,
                 "anomalies": self._anomalies,
                 "duplicates": self._duplicates,
+                "out_of_order": self._out_of_order,
                 "anomaly_rate": (
                     self._anomalies / self._processed if self._processed else 0.0
+                ),
+                "out_of_order_rate": (
+                    self._out_of_order / self._processed if self._processed else 0.0
                 ),
                 "metrics": metrics,
                 "sources": sources,
