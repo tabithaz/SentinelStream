@@ -35,6 +35,7 @@ class EventProcessor:
         self._metric_anomalies: dict[str, int] = defaultdict(int)
         self._source_counts: dict[str, int] = defaultdict(int)
         self._source_anomalies: dict[str, int] = defaultdict(int)
+        self._source_out_of_order: dict[str, int] = defaultdict(int)
         self._latest_timestamps: dict[tuple[str, str], datetime] = {}
         self._recent_events: deque[dict] = deque(maxlen=history_size)
         self._deduplication_size = deduplication_size
@@ -60,11 +61,10 @@ class EventProcessor:
 
             stream_key = (event.source, metric)
             latest_timestamp = self._latest_timestamps.get(stream_key)
-            out_of_order = (
-                latest_timestamp is not None and event.timestamp < latest_timestamp
-            )
+            out_of_order = latest_timestamp is not None and event.timestamp < latest_timestamp
             if out_of_order:
                 self._out_of_order += 1
+                self._source_out_of_order[event.source] += 1
             elif latest_timestamp is None or event.timestamp > latest_timestamp:
                 self._latest_timestamps[stream_key] = event.timestamp
 
@@ -103,16 +103,8 @@ class EventProcessor:
 
         accepted = sum(1 for result in results if result["accepted"])
         duplicates = len(results) - accepted
-        anomalies = sum(
-            1
-            for result in results
-            if result["accepted"] and result["anomaly"]
-        )
-        out_of_order = sum(
-            1
-            for result in results
-            if result["accepted"] and result["out_of_order"]
-        )
+        anomalies = sum(1 for result in results if result["accepted"] and result["anomaly"])
+        out_of_order = sum(1 for result in results if result["accepted"] and result["out_of_order"])
 
         return {
             "received": len(results),
@@ -159,7 +151,9 @@ class EventProcessor:
             ranked = []
             for source, count in self._source_counts.items():
                 anomalies = self._source_anomalies[source]
+                out_of_order = self._source_out_of_order[source]
                 anomaly_rate = anomalies / count
+                ordering_rate = out_of_order / count
                 ranked.append(
                     {
                         "source": source,
@@ -167,12 +161,16 @@ class EventProcessor:
                         "anomalies": anomalies,
                         "anomaly_rate": anomaly_rate,
                         "health": self._source_health(anomaly_rate),
+                        "out_of_order": out_of_order,
+                        "out_of_order_rate": ordering_rate,
+                        "ordering_health": self._ordering_health(ordering_rate),
                     }
                 )
 
         ranked.sort(
             key=lambda item: (
                 -item["anomaly_rate"],
+                -item["out_of_order_rate"],
                 -item["anomalies"],
                 -item["processed"],
                 item["source"],
@@ -222,12 +220,17 @@ class EventProcessor:
             sources = {}
             for source, count in sorted(self._source_counts.items()):
                 anomalies = self._source_anomalies[source]
+                out_of_order = self._source_out_of_order[source]
                 anomaly_rate = anomalies / count
+                ordering_rate = out_of_order / count
                 sources[source] = {
                     "processed": count,
                     "anomalies": anomalies,
                     "anomaly_rate": anomaly_rate,
                     "health": self._source_health(anomaly_rate),
+                    "out_of_order": out_of_order,
+                    "out_of_order_rate": ordering_rate,
+                    "ordering_health": self._ordering_health(ordering_rate),
                 }
 
             return {
@@ -235,12 +238,8 @@ class EventProcessor:
                 "anomalies": self._anomalies,
                 "duplicates": self._duplicates,
                 "out_of_order": self._out_of_order,
-                "anomaly_rate": (
-                    self._anomalies / self._processed if self._processed else 0.0
-                ),
-                "out_of_order_rate": (
-                    self._out_of_order / self._processed if self._processed else 0.0
-                ),
+                "anomaly_rate": self._anomalies / self._processed if self._processed else 0.0,
+                "out_of_order_rate": self._out_of_order / self._processed if self._processed else 0.0,
                 "metrics": metrics,
                 "sources": sources,
             }
@@ -258,6 +257,14 @@ class EventProcessor:
         if anomaly_rate >= 0.5:
             return "critical"
         if anomaly_rate >= 0.2:
+            return "watch"
+        return "healthy"
+
+    @staticmethod
+    def _ordering_health(out_of_order_rate: float) -> str:
+        if out_of_order_rate >= 0.25:
+            return "critical"
+        if out_of_order_rate >= 0.10:
             return "watch"
         return "healthy"
 
@@ -287,9 +294,7 @@ class EventProcessor:
         for metric, bounds in thresholds.items():
             minimum, maximum = bounds
             if minimum > maximum:
-                raise ValueError(
-                    f"invalid threshold for {metric!r}: minimum exceeds maximum"
-                )
+                raise ValueError(f"invalid threshold for {metric!r}: minimum exceeds maximum")
             normalized[metric.lower()] = (minimum, maximum)
 
         return normalized
