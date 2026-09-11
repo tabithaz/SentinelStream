@@ -1,9 +1,10 @@
 from collections import defaultdict, deque
-from datetime import datetime
+from datetime import datetime, timedelta
 from collections.abc import Mapping
 from threading import RLock
 
 from app.models import TelemetryEvent
+from app.throughput import analyze_throughput
 
 
 DEFAULT_THRESHOLDS: dict[str, tuple[float, float]] = {
@@ -142,6 +143,59 @@ class EventProcessor:
                     break
 
         return matches
+
+    def throughput_summary(
+        self,
+        window_seconds: int = 60,
+        windows: int = 5,
+        target_per_window: int = 100,
+        source: str | None = None,
+    ) -> dict:
+        if window_seconds <= 0:
+            raise ValueError("window_seconds must be greater than zero")
+        if windows <= 0:
+            raise ValueError("windows must be greater than zero")
+
+        with self._lock:
+            events = [
+                item.copy()
+                for item in self._recent_events
+                if source is None or item["source"] == source
+            ]
+
+        if not events:
+            counts = [0] * windows
+            analysis = analyze_throughput(counts, target_per_window)
+            return {
+                **analysis,
+                "window_seconds": window_seconds,
+                "window_counts": counts,
+                "source": source,
+                "anchor_timestamp": None,
+            }
+
+        timestamps = [datetime.fromisoformat(item["timestamp"]) for item in events]
+        anchor = max(timestamps)
+        horizon = timedelta(seconds=window_seconds * windows)
+        counts = [0] * windows
+
+        for timestamp in timestamps:
+            age = anchor - timestamp
+            if age < timedelta(0) or age >= horizon:
+                continue
+
+            windows_ago = int(age.total_seconds() // window_seconds)
+            index = windows - 1 - windows_ago
+            counts[index] += 1
+
+        analysis = analyze_throughput(counts, target_per_window)
+        return {
+            **analysis,
+            "window_seconds": window_seconds,
+            "window_counts": counts,
+            "source": source,
+            "anchor_timestamp": anchor.isoformat(),
+        }
 
     def ranked_sources(self, limit: int = 10) -> list[dict]:
         if limit <= 0:

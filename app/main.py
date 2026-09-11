@@ -6,7 +6,7 @@ from app.models import TelemetryEvent
 from app.processor import EventProcessor
 from app.reliability import classify_stream_reliability
 
-app = FastAPI(title="SentinelStream", version="0.7.0")
+app = FastAPI(title="SentinelStream", version="0.8.0")
 processor = EventProcessor()
 
 
@@ -42,6 +42,21 @@ def recent_events(
         metric=metric,
         source=source,
         anomalies_only=anomalies_only,
+    )
+
+
+@app.get("/events/throughput")
+def throughput_summary(
+    window_seconds: int = Query(default=60, ge=1, le=3600),
+    windows: int = Query(default=5, ge=1, le=120),
+    target_per_window: int = Query(default=100, ge=1),
+    source: str | None = None,
+) -> dict:
+    return processor.throughput_summary(
+        window_seconds=window_seconds,
+        windows=windows,
+        target_per_window=target_per_window,
+        source=source,
     )
 
 
