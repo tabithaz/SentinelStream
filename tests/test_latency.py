@@ -11,9 +11,9 @@ def test_healthy_latency_budget():
 
 
 def test_degraded_latency_budget():
-    result = analyze_latency([80, 90, 100, 110, 120, 130, 140, 160, 170, 180], 150)
+    result = analyze_latency([80, 90, 100, 110, 120, 130, 140, 145, 160, 170], 150)
     assert result["status"] == "degraded"
-    assert result["budget_violations"] == 3
+    assert result["budget_violations"] == 2
 
 
 def test_critical_latency_budget():
