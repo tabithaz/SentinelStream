@@ -33,6 +33,7 @@ Live Dashboard
 - Configurable anomaly detection rules
 - Bounded duplicate-event suppression for replay protection
 - Bounded recent-event history with metric and anomaly filtering
+- Live throughput and backpressure capacity analysis
 - Kafka producer and consumer foundation
 - PostgreSQL-ready persistence layer
 - Health and event API endpoints
@@ -86,6 +87,8 @@ docker compose up --build
 | POST | `/events` | Validate and process one event |
 | POST | `/events/batch` | Validate and process 1–1000 events in one request |
 | GET | `/events/recent` | Read recent events with optional `metric`, `source`, and `anomalies_only` filters |
+| GET | `/events/throughput` | Summarize recent accepted-event throughput across time windows |
+| GET | `/events/backpressure` | Model queue growth against a configurable service and queue capacity |
 | GET | `/events/sources` | Rank telemetry sources by anomaly rate and health |
 | GET | `/events/metrics` | Rank metrics by anomaly rate and health |
 | GET | `/events/stats` | Processing statistics, including duplicate-event count |
@@ -93,6 +96,8 @@ docker compose up --build
 Batch ingestion returns per-event results plus request-level `received`, `accepted`, `duplicates`, and `anomalies` counts. The processor holds its re-entrant lock across each batch so events from another request cannot interleave with the batch's state updates.
 
 Recent events are returned newest first. The `limit` query parameter accepts values from 1 to 1000, and the in-memory history is bounded so long-running processes do not accumulate events indefinitely.
+
+`/events/backpressure` uses the retained accepted-event history to bin arrivals into event-time windows, simulate draining at `service_capacity_per_window`, and report queue utilization, drain ratio, overloaded windows, and a health status. The endpoint can be scoped to one telemetry source and accepts configurable `window_seconds`, `windows`, and `queue_capacity` values.
 
 The processor also keeps a bounded fingerprint window for accepted events. An exact replay with the same source, metric, value, and timestamp is rejected as a duplicate and does not inflate processed-event, anomaly, or recent-history counts. Duplicate attempts are tracked separately in `/events/stats`.
 

@@ -2,11 +2,12 @@ from typing import Annotated
 
 from fastapi import Body, FastAPI, Query
 
+from app.capacity import summarize_backpressure
 from app.models import TelemetryEvent
 from app.processor import EventProcessor
 from app.reliability import classify_stream_reliability
 
-app = FastAPI(title="SentinelStream", version="0.8.0")
+app = FastAPI(title="SentinelStream", version="0.9.0")
 processor = EventProcessor()
 
 
@@ -56,6 +57,25 @@ def throughput_summary(
         window_seconds=window_seconds,
         windows=windows,
         target_per_window=target_per_window,
+        source=source,
+    )
+
+
+@app.get("/events/backpressure")
+def backpressure_summary(
+    window_seconds: int = Query(default=60, ge=1, le=3600),
+    windows: int = Query(default=5, ge=1, le=120),
+    service_capacity_per_window: int = Query(default=100, ge=1),
+    queue_capacity: int = Query(default=1000, ge=1),
+    source: str | None = None,
+) -> dict:
+    events = processor.recent_events(limit=1000, source=source)
+    return summarize_backpressure(
+        events,
+        window_seconds=window_seconds,
+        windows=windows,
+        service_capacity_per_window=service_capacity_per_window,
+        queue_capacity=queue_capacity,
         source=source,
     )
 
