@@ -1,7 +1,9 @@
+from dataclasses import asdict
 from typing import Annotated
 
 from fastapi import Body, FastAPI, Query
 
+from app.bursts import analyze_event_bursts
 from app.capacity import summarize_backpressure
 from app.models import TelemetryEvent
 from app.processor import EventProcessor
@@ -59,6 +61,30 @@ def throughput_summary(
         target_per_window=target_per_window,
         source=source,
     )
+
+
+@app.get("/events/bursts")
+def burst_summary(
+    window_seconds: int = Query(default=60, ge=1, le=3600),
+    windows: int = Query(default=5, ge=1, le=120),
+    multiplier: float = Query(default=2.0, gt=1.0, le=100.0),
+    source: str | None = None,
+) -> dict:
+    windowed = processor.throughput_summary(
+        window_seconds=window_seconds,
+        windows=windows,
+        target_per_window=1,
+        source=source,
+    )
+    analysis = analyze_event_bursts(windowed["window_counts"], multiplier=multiplier)
+    return {
+        **asdict(analysis),
+        "window_seconds": window_seconds,
+        "window_counts": windowed["window_counts"],
+        "multiplier": multiplier,
+        "source": source,
+        "anchor_timestamp": windowed["anchor_timestamp"],
+    }
 
 
 @app.get("/events/backpressure")
