@@ -7,6 +7,7 @@ from app.bursts import analyze_event_bursts
 from app.capacity import summarize_backpressure
 from app.models import TelemetryEvent
 from app.processor import EventProcessor
+from app.recovery import recommend_recovery
 from app.reliability import classify_stream_reliability
 
 app = FastAPI(title="SentinelStream", version="0.9.0")
@@ -180,6 +181,59 @@ def stream_reliability() -> dict:
         "anomaly_rate": stats["anomaly_rate"],
         "duplicate_rate": duplicate_rate,
         "out_of_order_rate": stats["out_of_order_rate"],
+    }
+
+
+@app.get("/events/recovery")
+def recovery_summary(
+    window_seconds: int = Query(default=60, ge=1, le=3600),
+    windows: int = Query(default=5, ge=1, le=120),
+    service_capacity_per_window: int = Query(default=100, ge=1),
+    queue_capacity: int = Query(default=1000, ge=1),
+    source: str | None = None,
+) -> dict:
+    events = processor.recent_events(limit=1000, source=source)
+    stats = processor.stats()
+
+    if source is None:
+        anomaly_rate = stats["anomaly_rate"]
+        out_of_order_rate = stats["out_of_order_rate"]
+    else:
+        source_stats = stats["sources"].get(source)
+        anomaly_rate = source_stats["anomaly_rate"] if source_stats else 0.0
+        out_of_order_rate = source_stats["out_of_order_rate"] if source_stats else 0.0
+
+    consecutive_failures = 0
+    for event in events:
+        if not (event["anomaly"] or event["out_of_order"]):
+            break
+        consecutive_failures += 1
+
+    capacity = summarize_backpressure(
+        events,
+        window_seconds=window_seconds,
+        windows=windows,
+        service_capacity_per_window=service_capacity_per_window,
+        queue_capacity=queue_capacity,
+        source=source,
+    )
+    queue_utilization = min(1.0, capacity["peak_capacity_utilization"] / 100.0)
+    error_rate = max(anomaly_rate, out_of_order_rate)
+    plan = recommend_recovery(
+        error_rate=error_rate,
+        queue_utilization=queue_utilization,
+        consecutive_failures=consecutive_failures,
+    )
+
+    return {
+        **asdict(plan),
+        "source": source,
+        "error_rate": error_rate,
+        "anomaly_rate": anomaly_rate,
+        "out_of_order_rate": out_of_order_rate,
+        "queue_utilization": queue_utilization,
+        "consecutive_failures": consecutive_failures,
+        "backpressure_status": capacity["status"],
     }
 
 
