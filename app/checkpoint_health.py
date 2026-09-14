@@ -6,6 +6,8 @@ class CheckpointHealth:
     current_lag: int
     max_lag: int
     stalled_intervals: int
+    max_consecutive_stalls: int
+    checkpoint_regressions: int
     status: str
 
 
@@ -21,26 +23,53 @@ def analyze_checkpoint_health(
         raise ValueError("invalid lag thresholds")
 
     lags: list[int] = []
+    stalled_intervals = 0
+    consecutive_stalls = 0
+    max_consecutive_stalls = 0
+    checkpoint_regressions = 0
+
+    previous_produced: int | None = None
+    previous_checkpoint: int | None = None
+
     for produced, checkpoint in zip(produced_offsets, checkpoint_offsets):
         if produced < 0 or checkpoint < 0 or checkpoint > produced:
             raise ValueError("invalid offsets")
+
         lags.append(produced - checkpoint)
 
-    stalled_intervals = sum(
-        1
-        for index in range(1, len(checkpoint_offsets))
-        if checkpoint_offsets[index] == checkpoint_offsets[index - 1]
-        and produced_offsets[index] > produced_offsets[index - 1]
-    )
+        if previous_checkpoint is not None:
+            if checkpoint < previous_checkpoint:
+                checkpoint_regressions += 1
+                consecutive_stalls = 0
+            elif checkpoint == previous_checkpoint and produced > previous_produced:
+                stalled_intervals += 1
+                consecutive_stalls += 1
+                max_consecutive_stalls = max(max_consecutive_stalls, consecutive_stalls)
+            else:
+                consecutive_stalls = 0
+
+        previous_produced = produced
+        previous_checkpoint = checkpoint
 
     current_lag = lags[-1]
     max_lag = max(lags)
 
-    if current_lag >= critical_lag or stalled_intervals >= 3:
+    if current_lag >= critical_lag or max_consecutive_stalls >= 3:
         status = "critical"
-    elif current_lag >= warning_lag or stalled_intervals > 0:
+    elif (
+        current_lag >= warning_lag
+        or stalled_intervals > 0
+        or checkpoint_regressions > 0
+    ):
         status = "degraded"
     else:
         status = "healthy"
 
-    return CheckpointHealth(current_lag, max_lag, stalled_intervals, status)
+    return CheckpointHealth(
+        current_lag,
+        max_lag,
+        stalled_intervals,
+        max_consecutive_stalls,
+        checkpoint_regressions,
+        status,
+    )
