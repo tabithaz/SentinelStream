@@ -8,6 +8,19 @@ def test_balanced_partitions():
     assert result.hottest_partition == "p2"
 
 
+def test_balanced_two_partition_stream_is_not_false_positive():
+    result = analyze_partition_skew({"p0": 50, "p1": 50})
+    assert result.status == "balanced"
+    assert result.hottest_share == 0.5
+    assert result.imbalance_ratio == 1.0
+
+
+def test_moderately_uneven_two_partition_stream_remains_balanced():
+    result = analyze_partition_skew({"p0": 60, "p1": 40})
+    assert result.status == "balanced"
+    assert result.imbalance_ratio == 1.2
+
+
 def test_skewed_partitions():
     result = analyze_partition_skew({"p0": 150, "p1": 75, "p2": 75})
     assert result.status == "skewed"

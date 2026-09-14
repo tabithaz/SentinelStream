@@ -28,9 +28,13 @@ def analyze_partition_skew(partition_counts: dict[str, int]) -> PartitionSkew:
     imbalance_ratio = hottest_count / average
     hottest_share = hottest_count / total
 
-    if imbalance_ratio >= 2.0 or hottest_share >= 0.6:
+    # Use the ratio to the expected per-partition average for classification.
+    # A fixed hottest-share threshold incorrectly flags balanced streams with
+    # only one or two partitions, where each partition naturally owns a large
+    # fraction of total traffic.
+    if imbalance_ratio >= 2.0:
         status = "critical"
-    elif imbalance_ratio >= 1.5 or hottest_share >= 0.4:
+    elif imbalance_ratio >= 1.5:
         status = "skewed"
     else:
         status = "balanced"
