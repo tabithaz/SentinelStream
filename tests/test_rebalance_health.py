@@ -28,3 +28,20 @@ def test_validation():
         analyze_rebalance_health([1], 0)
     with pytest.raises(ValueError):
         analyze_rebalance_health([-1], 100)
+
+
+@pytest.mark.parametrize("observation", [float("nan"), float("inf"), True, "300"])
+def test_invalid_observation_windows_are_rejected(observation):
+    with pytest.raises(ValueError):
+        analyze_rebalance_health([1], observation)
+
+
+@pytest.mark.parametrize("pause", [float("nan"), float("inf"), True, "1"])
+def test_invalid_pause_samples_are_rejected(pause):
+    with pytest.raises(ValueError):
+        analyze_rebalance_health([pause], 300)
+
+
+def test_pause_time_cannot_exceed_observation_window():
+    with pytest.raises(ValueError, match="cannot exceed observation window"):
+        analyze_rebalance_health([40, 70], 100)
