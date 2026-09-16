@@ -1,4 +1,6 @@
 from dataclasses import dataclass
+import math
+from numbers import Integral, Real
 
 
 @dataclass(frozen=True)
@@ -10,6 +12,18 @@ class RetryAmplificationReport:
     status: str
 
 
+def _validate_count(value: int, name: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, Integral):
+        raise ValueError(f"{name} must be an integer")
+    if value < 0:
+        raise ValueError(f"{name} cannot be negative")
+
+
+def _validate_threshold(value: float, name: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, Real) or not math.isfinite(value):
+        raise ValueError(f"{name} must be a finite number")
+
+
 def analyze_retry_amplification(
     original_events: int,
     retry_attempts: int,
@@ -17,8 +31,11 @@ def analyze_retry_amplification(
     critical_factor: float = 1.75,
 ) -> RetryAmplificationReport:
     """Quantify extra processing load caused by retries."""
-    if original_events < 0 or retry_attempts < 0:
-        raise ValueError("event counts cannot be negative")
+    _validate_count(original_events, "original_events")
+    _validate_count(retry_attempts, "retry_attempts")
+    _validate_threshold(warning_factor, "warning_factor")
+    _validate_threshold(critical_factor, "critical_factor")
+
     if warning_factor <= 1.0 or critical_factor <= warning_factor:
         raise ValueError("retry thresholds must satisfy 1 < warning < critical")
     if original_events == 0:
