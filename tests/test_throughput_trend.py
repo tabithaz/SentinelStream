@@ -38,3 +38,15 @@ def test_empty_series_returns_no_data():
 def test_negative_rate_is_rejected():
     with pytest.raises(ValueError):
         analyze_throughput_trend([10.0, -1.0])
+
+
+@pytest.mark.parametrize("invalid_rate", [float("nan"), float("inf"), float("-inf"), True, "10"])
+def test_invalid_rate_is_rejected(invalid_rate):
+    with pytest.raises(ValueError, match="throughput rate at index 1 must be a finite number"):
+        analyze_throughput_trend([10.0, invalid_rate])
+
+
+@pytest.mark.parametrize("invalid_threshold", [float("nan"), float("inf"), True, "20"])
+def test_invalid_threshold_is_rejected(invalid_threshold):
+    with pytest.raises(ValueError, match="warning threshold must be a finite number"):
+        analyze_throughput_trend([10.0, 9.0], warning_drop_percent=invalid_threshold)
