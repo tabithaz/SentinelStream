@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import math
 
 
 @dataclass(frozen=True)
@@ -16,10 +17,24 @@ def analyze_poison_messages(
     critical_rate_percent: float = 10.0,
 ) -> PoisonMessageReport:
     """Identify messages repeatedly failing processing and consuming retry capacity."""
-    if poison_retry_threshold <= 0 or not 0 < critical_rate_percent <= 100:
-        raise ValueError("invalid poison-message thresholds")
-    if any(count < 0 for count in retry_counts):
-        raise ValueError("retry counts cannot be negative")
+    if (
+        isinstance(poison_retry_threshold, bool)
+        or not isinstance(poison_retry_threshold, int)
+        or poison_retry_threshold <= 0
+    ):
+        raise ValueError("poison retry threshold must be a positive integer")
+    if (
+        isinstance(critical_rate_percent, bool)
+        or not isinstance(critical_rate_percent, (int, float))
+        or not math.isfinite(critical_rate_percent)
+        or not 0 < critical_rate_percent <= 100
+    ):
+        raise ValueError("critical rate percent must be finite and between 0 and 100")
+    if any(
+        isinstance(count, bool) or not isinstance(count, int) or count < 0
+        for count in retry_counts
+    ):
+        raise ValueError("retry counts must be non-negative integers")
     if not retry_counts:
         return PoisonMessageReport(0, 0, 0, 0.0, "no_data")
 
