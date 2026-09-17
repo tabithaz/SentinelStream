@@ -34,7 +34,7 @@ def analyze_processing_slo(
 
     if attainment >= target_percent:
         status = "healthy"
-    elif budget_consumed < 200.0:
+    elif budget_consumed <= 200.0:
         status = "degraded"
     else:
         status = "critical"
