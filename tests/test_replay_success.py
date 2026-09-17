@@ -26,3 +26,18 @@ def test_no_replays():
 def test_rejects_inconsistent_counters():
     with pytest.raises(ValueError):
         analyze_replay_success(2, 3)
+
+
+@pytest.mark.parametrize("attempts,successful", [(True, 1), (1, False), (1.5, 1), (2, 1.5), ("2", 1)])
+def test_rejects_non_integer_counters(attempts, successful):
+    with pytest.raises(ValueError, match="counters must be integers"):
+        analyze_replay_success(attempts, successful)
+
+
+@pytest.mark.parametrize(
+    "warning,critical",
+    [(float("nan"), 95.0), (99.0, float("inf")), (True, 95.0), (99.0, "95")],
+)
+def test_rejects_invalid_threshold_types(warning, critical):
+    with pytest.raises(ValueError, match="thresholds must be finite numbers"):
+        analyze_replay_success(100, 100, warning, critical)
