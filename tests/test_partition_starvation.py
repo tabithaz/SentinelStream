@@ -31,3 +31,21 @@ def test_invalid_values_are_rejected():
         analyze_partition_starvation([-1])
     with pytest.raises(ValueError):
         analyze_partition_starvation([1], starvation_seconds=0)
+
+
+@pytest.mark.parametrize("value", [True, "60", None, float("nan"), float("inf")])
+def test_invalid_idle_durations_are_rejected(value):
+    with pytest.raises(ValueError, match="idle duration must be a finite number"):
+        analyze_partition_starvation([value])
+
+
+@pytest.mark.parametrize("value", [True, "60", None, float("nan"), float("inf")])
+def test_invalid_starvation_thresholds_are_rejected(value):
+    with pytest.raises(ValueError, match="starvation_seconds must be a finite number"):
+        analyze_partition_starvation([1], starvation_seconds=value)
+
+
+@pytest.mark.parametrize("value", [True, "25", None, float("nan"), float("inf")])
+def test_invalid_critical_rates_are_rejected(value):
+    with pytest.raises(ValueError, match="critical_rate_percent must be a finite number"):
+        analyze_partition_starvation([1], critical_rate_percent=value)
