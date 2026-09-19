@@ -27,3 +27,21 @@ def test_no_data():
 def test_invalid_utilization():
     with pytest.raises(ValueError):
         analyze_consumer_utilization([101])
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf"), True, "80", None])
+def test_non_finite_or_nonnumeric_utilization_is_rejected(value):
+    with pytest.raises(ValueError):
+        analyze_consumer_utilization([value])
+
+
+@pytest.mark.parametrize("warning", [float("nan"), float("inf"), True, "80", None])
+def test_invalid_warning_threshold_is_rejected(warning):
+    with pytest.raises(ValueError):
+        analyze_consumer_utilization([50], warning_percent=warning)
+
+
+@pytest.mark.parametrize("critical", [float("nan"), float("inf"), True, "95", None, 101])
+def test_invalid_critical_threshold_is_rejected(critical):
+    with pytest.raises(ValueError):
+        analyze_consumer_utilization([50], critical_percent=critical)

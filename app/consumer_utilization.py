@@ -1,3 +1,4 @@
+import math
 from dataclasses import dataclass
 
 
@@ -10,16 +11,28 @@ class ConsumerUtilizationReport:
     status: str
 
 
+def _validate_percentage(value: float, name: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{name} must be a finite number")
+    if not math.isfinite(value):
+        raise ValueError(f"{name} must be a finite number")
+
+
 def analyze_consumer_utilization(
     utilization_percent: list[float],
     warning_percent: float = 80.0,
     critical_percent: float = 95.0,
 ) -> ConsumerUtilizationReport:
     """Measure whether stream consumers have enough processing headroom."""
-    if warning_percent <= 0 or critical_percent <= warning_percent:
-        raise ValueError("utilization thresholds must be positive and ordered")
-    if any(value < 0 or value > 100 for value in utilization_percent):
-        raise ValueError("consumer utilization must be between 0 and 100 percent")
+    _validate_percentage(warning_percent, "warning threshold")
+    _validate_percentage(critical_percent, "critical threshold")
+    if warning_percent <= 0 or critical_percent <= warning_percent or critical_percent > 100:
+        raise ValueError("utilization thresholds must be positive, ordered, and at most 100 percent")
+
+    for value in utilization_percent:
+        _validate_percentage(value, "consumer utilization")
+        if value < 0 or value > 100:
+            raise ValueError("consumer utilization must be between 0 and 100 percent")
 
     if not utilization_percent:
         return ConsumerUtilizationReport(0, 0.0, 0.0, 0, "no_data")
