@@ -1,3 +1,5 @@
+import math
+
 import pytest
 
 from app.duplicate_delivery import analyze_duplicate_deliveries
@@ -26,8 +28,23 @@ def test_empty_stream_returns_no_data():
     assert analyze_duplicate_deliveries([]).status == "no_data"
 
 
-def test_rejects_blank_ids_and_invalid_thresholds():
+@pytest.mark.parametrize("event_ids", [[" "], [None], [123], ["evt-1", False]])
+def test_rejects_invalid_event_ids(event_ids):
+    with pytest.raises(ValueError, match="non-blank strings"):
+        analyze_duplicate_deliveries(event_ids)
+
+
+@pytest.mark.parametrize(
+    ("warning", "critical"),
+    [
+        (5, 5),
+        (-1, 5),
+        (math.nan, 5),
+        (1, math.inf),
+        (True, 5),
+        ("1", 5),
+    ],
+)
+def test_rejects_invalid_thresholds(warning, critical):
     with pytest.raises(ValueError):
-        analyze_duplicate_deliveries([" "])
-    with pytest.raises(ValueError):
-        analyze_duplicate_deliveries(["evt-1"], 5, 5)
+        analyze_duplicate_deliveries(["evt-1"], warning, critical)

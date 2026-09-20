@@ -1,3 +1,4 @@
+import math
 from dataclasses import dataclass
 
 
@@ -15,10 +16,18 @@ def analyze_duplicate_deliveries(
     warning_percent: float = 1.0,
     critical_percent: float = 5.0,
 ) -> DuplicateDeliveryReport:
+    thresholds = (warning_percent, critical_percent)
+    if any(
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(value)
+        for value in thresholds
+    ):
+        raise ValueError("thresholds must be finite numbers")
     if warning_percent < 0 or critical_percent <= warning_percent:
         raise ValueError("thresholds must satisfy 0 <= warning < critical")
-    if any(not event_id.strip() for event_id in event_ids):
-        raise ValueError("event IDs must not be blank")
+    if any(not isinstance(event_id, str) or not event_id.strip() for event_id in event_ids):
+        raise ValueError("event IDs must be non-blank strings")
 
     total = len(event_ids)
     if total == 0:
