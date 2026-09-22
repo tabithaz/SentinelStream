@@ -1,68 +1,32 @@
 # SentinelStream
 
-SentinelStream is a real-time event processing platform for ingesting, validating, analyzing, and monitoring high-volume system telemetry.
+SentinelStream is a FastAPI service for validating telemetry events and diagnosing the health of event-processing streams. It accepts individual events or bounded batches, detects anomalies, duplicates, and ordering problems, and exposes operational reports for throughput, capacity, reliability, and recovery.
 
-The project is designed around production-oriented distributed systems concepts: asynchronous event ingestion, durable message processing, anomaly detection, persistence, observability, and fault-tolerant consumers.
+The project focuses on the processing and observability layer that would sit behind a Kafka or similar event broker. Its current v0.9 implementation is self-contained and uses bounded in-memory state so it can be run and reviewed without external infrastructure.
 
-## Architecture
+## Current capabilities
 
-```text
-Event Producers
-      |
-      v
- Apache Kafka
-      |
-      v
-Processing Service
-   |        |
-   v        v
-PostgreSQL  Metrics
-   |        |
-   v        v
-REST API  Prometheus
-   |
-   v
-Live Dashboard
-```
+- Validated single-event and batch ingestion
+- UTC timestamp normalization and out-of-order detection
+- Configurable metric thresholds and anomaly classification
+- Bounded event history and duplicate-delivery suppression
+- Source and metric health rankings
+- Throughput, burst, capacity, backlog, and partition-skew diagnostics
+- Reliability, retry, checkpoint, replay, dead-letter, and recovery analysis modules
+- Thread-safe batch processing with concurrency regression tests
+- FastAPI request validation and interactive OpenAPI documentation
+- Non-root Docker image with an application health check
+- Automated unit, API, concurrency, and container smoke tests
 
-## Current Features
+## Stack
 
-- Structured telemetry event model
-- Single-event and bounded batch ingestion
-- Event validation and normalization
-- Configurable anomaly detection rules
-- Bounded duplicate-event suppression for replay protection
-- Bounded recent-event history with metric and anomaly filtering
-- Live throughput and backpressure capacity analysis
-- Kafka producer and consumer foundation
-- PostgreSQL-ready persistence layer
-- Health and event API endpoints
-- Docker-based local development environment
-- Automated unit tests and CI workflow
-
-## Planned Development
-
-- Dead-letter queue and retry handling
-- WebSocket live event streaming
-- Redis-backed caching
-- Prometheus metrics and Grafana dashboards
-- Load and throughput testing
-- Kubernetes deployment manifests
-- Multi-service horizontal scaling
-
-## Tech Stack
-
-- Python
-- FastAPI
-- Apache Kafka
-- PostgreSQL
-- Docker / Docker Compose
-- Pytest
+- Python 3.12
+- FastAPI and Pydantic
+- pytest and HTTPX
+- Docker
 - GitHub Actions
 
-## Quick Start
-
-### Local API
+## Run locally
 
 ```bash
 python -m venv .venv
@@ -71,47 +35,113 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-Open `http://localhost:8000/health` to verify the service is running.
+The API is available at `http://127.0.0.1:8000`, with interactive documentation at `http://127.0.0.1:8000/docs`.
 
-### Docker
+## Run with Docker
 
 ```bash
-docker compose up --build
+docker build -t sentinelstream-api .
+docker run --rm -p 8000:8000 sentinelstream-api
 ```
 
-## API
+Verify the running service:
 
-| Method | Endpoint | Description |
-| --- | --- | --- |
-| GET | `/health` | Service health check |
-| POST | `/events` | Validate and process one event |
-| POST | `/events/batch` | Validate and process 1–1000 events in one request |
-| GET | `/events/recent` | Read recent events with optional `metric`, `source`, and `anomalies_only` filters |
-| GET | `/events/throughput` | Summarize recent accepted-event throughput across time windows |
-| GET | `/events/backpressure` | Model queue growth against a configurable service and queue capacity |
-| GET | `/events/sources` | Rank telemetry sources by anomaly rate and health |
-| GET | `/events/metrics` | Rank metrics by anomaly rate and health |
-| GET | `/events/stats` | Processing statistics, including duplicate-event count |
+```bash
+curl http://127.0.0.1:8000/health
+```
 
-Batch ingestion returns per-event results plus request-level `received`, `accepted`, `duplicates`, and `anomalies` counts. The processor holds its re-entrant lock across each batch so events from another request cannot interleave with the batch's state updates.
+## Runnable example
 
-Recent events are returned newest first. The `limit` query parameter accepts values from 1 to 1000, and the in-memory history is bounded so long-running processes do not accumulate events indefinitely.
+Process a normal event:
 
-`/events/backpressure` uses the retained accepted-event history to bin arrivals into event-time windows, simulate draining at `service_capacity_per_window`, and report queue utilization, drain ratio, overloaded windows, and a health status. The endpoint can be scoped to one telemetry source and accepts configurable `window_seconds`, `windows`, and `queue_capacity` values.
+```bash
+curl -X POST http://127.0.0.1:8000/events \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source": "sensor-alpha",
+    "metric": "temperature",
+    "value": 72.4,
+    "timestamp": "2026-09-22T18:00:00Z"
+  }'
+```
 
-The processor also keeps a bounded fingerprint window for accepted events. An exact replay with the same source, metric, value, and timestamp is rejected as a duplicate and does not inflate processed-event, anomaly, or recent-history counts. Duplicate attempts are tracked separately in `/events/stats`.
-
-## Event Format
+Example response:
 
 ```json
 {
+  "accepted": true,
+  "duplicate": false,
+  "anomaly": false,
+  "out_of_order": false,
   "source": "sensor-alpha",
   "metric": "temperature",
   "value": 72.4,
-  "timestamp": "2026-09-06T18:00:00Z"
+  "timestamp": "2026-09-22T18:00:00+00:00"
 }
 ```
 
-For `/events/batch`, send an array of event objects in this format. Batches are limited to 1000 events to bound request work and memory use.
+Send a bounded batch and inspect stream health:
 
-SentinelStream is being developed incrementally with an emphasis on reliability, testability, and measurable system performance.
+```bash
+curl -X POST http://127.0.0.1:8000/events/batch \
+  -H "Content-Type: application/json" \
+  -d '[
+    {"source":"sensor-alpha","metric":"temperature","value":72.4,"timestamp":"2026-09-22T18:00:00Z"},
+    {"source":"sensor-alpha","metric":"temperature","value":145.0,"timestamp":"2026-09-22T18:01:00Z"}
+  ]'
+
+curl http://127.0.0.1:8000/events/reliability
+curl http://127.0.0.1:8000/events/recovery
+```
+
+## API endpoints
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/health` | Service readiness |
+| `POST` | `/events` | Process one telemetry event |
+| `POST` | `/events/batch` | Process 1 to 1000 events atomically |
+| `GET` | `/events/recent` | Query bounded recent history |
+| `GET` | `/events/stats` | Inspect processing, anomaly, duplicate, and ordering totals |
+| `GET` | `/events/sources` | Rank source health |
+| `GET` | `/events/metrics` | Rank metric health |
+| `GET` | `/events/throughput` | Analyze recent throughput windows |
+| `GET` | `/events/bursts` | Detect bursty arrival windows |
+| `GET` | `/events/backpressure` | Model queue capacity and overload |
+| `GET` | `/events/health-summary` | Summarize monitored source health |
+| `GET` | `/events/quality-summary` | Classify accepted, duplicate, and anomalous data |
+| `GET` | `/events/reliability` | Combine stream failure signals |
+| `GET` | `/events/recovery` | Recommend recovery action |
+
+Query parameters are validated by FastAPI. Recent-history and batch sizes are bounded to keep request work and process memory predictable.
+
+## Run tests
+
+```bash
+PYTHONPATH=. pytest -q
+```
+
+The suite covers the API, processing rules, diagnostic modules, validation failures, event ordering, duplicate delivery, concurrency, and batch behavior.
+
+## Architecture
+
+```text
+Telemetry producers
+        |
+        v
+ FastAPI ingestion
+        |
+        v
+Thread-safe processor
+   |           |
+   v           v
+Bounded       Health and
+history       recovery reports
+```
+
+## Next milestones
+
+- Add a broker adapter for Kafka-compatible ingestion
+- Persist events and checkpoints outside process memory
+- Export Prometheus metrics and provide a live dashboard
+- Add sustained load and multi-process deployment tests
