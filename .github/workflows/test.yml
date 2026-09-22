@@ -18,3 +18,22 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: python -m pytest -q
+
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build API image
+        run: docker build -t sentinelstream-api .
+      - name: Start API container
+        run: docker run --detach --name sentinelstream -p 8000:8000 sentinelstream-api
+      - name: Verify container health
+        run: |
+          for attempt in {1..10}; do
+            if curl --fail --silent http://127.0.0.1:8000/health; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs sentinelstream
+          exit 1
