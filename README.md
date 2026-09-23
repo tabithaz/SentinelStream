@@ -15,6 +15,7 @@ The project focuses on the processing and observability layer that would sit beh
 - Reliability, retry, checkpoint, replay, dead-letter, and recovery analysis modules
 - Thread-safe batch processing with concurrency regression tests
 - FastAPI request validation and interactive OpenAPI documentation
+- Prometheus-compatible processing counters and health ratios
 - Non-root Docker image with an application health check
 - Automated unit, API, concurrency, and container smoke tests
 
@@ -48,6 +49,7 @@ Verify the running service:
 
 ```bash
 curl http://127.0.0.1:8000/health
+curl http://127.0.0.1:8000/metrics
 ```
 
 ## Runnable example
@@ -99,6 +101,7 @@ curl http://127.0.0.1:8000/events/recovery
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/health` | Service readiness |
+| `GET` | `/metrics` | Prometheus-compatible operational metrics |
 | `POST` | `/events` | Process one telemetry event |
 | `POST` | `/events/batch` | Process 1 to 1000 events atomically |
 | `GET` | `/events/recent` | Query bounded recent history |
@@ -114,6 +117,8 @@ curl http://127.0.0.1:8000/events/recovery
 | `GET` | `/events/recovery` | Recommend recovery action |
 
 Query parameters are validated by FastAPI. Recent-history and batch sizes are bounded to keep request work and process memory predictable.
+
+The `/metrics` endpoint uses Prometheus text exposition format and reports received, accepted, duplicate, anomalous, and out-of-order event totals along with anomaly ratios and monitored-source counts. The endpoint intentionally avoids source labels so untrusted source names cannot create unbounded metric cardinality.
 
 ## Run tests
 
@@ -143,5 +148,5 @@ history       recovery reports
 
 - Add a broker adapter for Kafka-compatible ingestion
 - Persist events and checkpoints outside process memory
-- Export Prometheus metrics and provide a live dashboard
+- Provide a live operational dashboard
 - Add sustained load and multi-process deployment tests
