@@ -1,22 +1,31 @@
 from dataclasses import asdict
 from typing import Annotated
 
-from fastapi import Body, FastAPI, Query
+from fastapi import Body, FastAPI, Query, Response
 
 from app.bursts import analyze_event_bursts
 from app.capacity import summarize_backpressure
 from app.models import TelemetryEvent
 from app.processor import EventProcessor
+from app.prometheus import render_prometheus_metrics
 from app.recovery import recommend_recovery
 from app.reliability import classify_stream_reliability
 
-app = FastAPI(title="SentinelStream", version="0.9.0")
+app = FastAPI(title="SentinelStream", version="0.10.0")
 processor = EventProcessor()
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "healthy", "service": "sentinelstream"}
+
+
+@app.get("/metrics", include_in_schema=False)
+def prometheus_metrics() -> Response:
+    return Response(
+        content=render_prometheus_metrics(processor.stats()),
+        media_type="text/plain; version=0.0.4",
+    )
 
 
 @app.post("/events")
