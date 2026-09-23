@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SentinelStream Operations</title>
+  <style>
+    :root{color-scheme:dark;--bg:#071018;--panel:#0d1b27;--line:#203444;--text:#edf7f8;--muted:#8ca5ac;--cyan:#2dd4bf;--amber:#fbbf24;--red:#fb7185}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at 15% 0,#123445 0,var(--bg) 38%);color:var(--text);font:14px/1.5 Inter,ui-sans-serif,system-ui,sans-serif}
+    main{width:min(1120px,92vw);margin:auto;padding:48px 0 64px}header{display:flex;justify-content:space-between;align-items:end;gap:20px;margin-bottom:24px}h1{font-size:clamp(2rem,5vw,3.1rem);letter-spacing:-.05em;margin:0}h2{font-size:1rem;margin:0 0 14px}.sub{color:var(--muted);margin:4px 0}.status{border:1px solid #1f5d55;background:#0a2c29;color:var(--cyan);padding:6px 12px;border-radius:999px;font-weight:700}.panel{background:#0d1b27e8;border:1px solid var(--line);border-radius:17px;box-shadow:0 18px 55px #0005}.composer{padding:18px;margin-bottom:14px}form{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px}input,button{font:inherit;border-radius:9px;padding:11px 12px;border:1px solid var(--line)}input{min-width:0;background:#08131d;color:var(--text)}button{background:var(--cyan);color:#041411;font-weight:800;cursor:pointer}button:disabled{opacity:.55;cursor:wait}#message{min-height:24px;color:var(--muted);margin:8px 3px 18px}#message.error{color:var(--red)}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:13px;margin-bottom:13px}.card{padding:19px}.label{color:var(--muted);text-transform:uppercase;letter-spacing:.1em;font-size:.72rem}.value{font-size:1.8rem;font-weight:850;letter-spacing:-.04em;margin-top:4px}.grid{display:grid;grid-template-columns:1.5fr 1fr;gap:13px}.events,.health{padding:20px}.table{overflow:auto}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);white-space:nowrap}th{color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.08em}.flag{font-size:.72rem;font-weight:800;border-radius:999px;padding:3px 8px}.flag.ok{color:var(--cyan);background:#0a2c29}.flag.bad{color:var(--red);background:#35131d}.meter{height:10px;background:#071018;border-radius:99px;overflow:hidden;margin:8px 0 18px}.meter span{display:block;height:100%;background:var(--cyan);width:0;transition:width .25s}.detail{display:flex;justify-content:space-between;color:var(--muted);padding:7px 0;border-bottom:1px solid var(--line)}.empty{color:var(--muted);text-align:center;padding:30px}.pulse{animation:pulse 1.4s infinite}@keyframes pulse{50%{opacity:.5}}@media(max-width:760px){header{align-items:start;flex-direction:column}form{grid-template-columns:1fr 1fr}.cards{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}}@media(max-width:460px){form,.cards{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<main>
+  <header><div><h1>SentinelStream</h1><p class="sub">Live telemetry processing and stream health.</p></div><span id="service-status" class="status">Connected</span></header>
+  <section class="panel composer">
+    <h2>Send telemetry</h2>
+    <form id="event-form">
+      <input id="source" aria-label="Source" value="sensor-alpha" placeholder="Source" required maxlength="100">
+      <input id="metric" aria-label="Metric" value="temperature" placeholder="Metric" required maxlength="100">
+      <input id="value" aria-label="Value" value="72.4" placeholder="Value" required type="number" step="any">
+      <button type="submit">Process event</button>
+    </form>
+  </section>
+  <div id="message">Dashboard refreshes every five seconds.</div>
+  <section class="cards">
+    <article class="panel card"><div class="label">Processed</div><div id="processed" class="value">0</div></article>
+    <article class="panel card"><div class="label">Anomaly rate</div><div id="anomaly-rate" class="value">0%</div></article>
+    <article class="panel card"><div class="label">Duplicates</div><div id="duplicates" class="value">0</div></article>
+    <article class="panel card"><div class="label">Out of order</div><div id="out-of-order" class="value">0</div></article>
+  </section>
+  <section class="grid">
+    <article class="panel events"><h2>Recent events</h2><div class="table"><table><thead><tr><th>Source</th><th>Metric</th><th>Value</th><th>Result</th></tr></thead><tbody id="event-rows"></tbody></table><div id="empty" class="empty">No events processed yet.</div></div></article>
+    <article class="panel health"><h2>Reliability</h2><div class="label">Overall score</div><div id="score" class="value">100%</div><div class="meter"><span id="score-meter"></span></div><div class="detail"><span>Status</span><strong id="reliability">Healthy</strong></div><div class="detail"><span>Sources</span><strong id="sources">0</strong></div><div class="detail"><span>Metrics</span><strong id="metrics">0</strong></div><div class="detail"><span>Last refresh</span><strong id="refreshed">Never</strong></div></article>
+  </section>
+</main>
+<script>
+  const form=document.querySelector('#event-form'),message=document.querySelector('#message'),rows=document.querySelector('#event-rows'),empty=document.querySelector('#empty');
+  const number=value=>Number(value).toLocaleString();
+  const percent=value=>`${(Number(value)*100).toFixed(1)}%`;
+  function setMessage(text,error=false){message.textContent=text;message.className=error?'error':''}
+  function renderEvents(events){rows.replaceChildren(...events.map(event=>{const row=document.createElement('tr');for(const value of [event.source,event.metric,event.value]){const cell=document.createElement('td');cell.textContent=value;row.append(cell)}const result=document.createElement('td'),flag=document.createElement('span');flag.className=`flag ${event.anomaly||event.out_of_order?'bad':'ok'}`;flag.textContent=event.anomaly?'Anomaly':event.out_of_order?'Out of order':'Normal';result.append(flag);row.append(result);return row}));empty.hidden=events.length>0}
+  async function refresh(){try{const [statsResponse,reliabilityResponse,eventsResponse]=await Promise.all([fetch('/events/stats'),fetch('/events/reliability'),fetch('/events/recent?limit=12')]);if(!statsResponse.ok||!reliabilityResponse.ok||!eventsResponse.ok)throw new Error('Unable to load stream health');const [stats,reliability,events]=await Promise.all([statsResponse.json(),reliabilityResponse.json(),eventsResponse.json()]);document.querySelector('#processed').textContent=number(stats.processed);document.querySelector('#anomaly-rate').textContent=percent(stats.anomaly_rate);document.querySelector('#duplicates').textContent=number(stats.duplicates);document.querySelector('#out-of-order').textContent=number(stats.out_of_order);const score=Math.max(0,1-Math.max(reliability.anomaly_rate,reliability.duplicate_rate,reliability.out_of_order_rate));document.querySelector('#score').textContent=percent(score);document.querySelector('#score-meter').style.width=percent(score);document.querySelector('#reliability').textContent=reliability.status.replaceAll('_',' ');document.querySelector('#sources').textContent=Object.keys(stats.sources).length;document.querySelector('#metrics').textContent=Object.keys(stats.metrics).length;document.querySelector('#refreshed').textContent=new Date().toLocaleTimeString();renderEvents(events);document.querySelector('#service-status').textContent='Connected'}catch(error){document.querySelector('#service-status').textContent='Unavailable';setMessage(error.message,true)}}
+  form.addEventListener('submit',async event=>{event.preventDefault();const button=form.querySelector('button');button.disabled=true;setMessage('Processing telemetry…');try{const response=await fetch('/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:document.querySelector('#source').value.trim(),metric:document.querySelector('#metric').value.trim(),value:Number(document.querySelector('#value').value),timestamp:new Date().toISOString()})});const result=await response.json();if(!response.ok)throw new Error(result.detail?.[0]?.msg||'Event was rejected');setMessage(result.duplicate?'Duplicate delivery rejected.':result.anomaly?'Event accepted and flagged as anomalous.':'Event accepted.');await refresh()}catch(error){setMessage(error.message,true)}finally{button.disabled=false}});
+  refresh();setInterval(refresh,5000);
+</script>
+</body>
+</html>
