@@ -16,6 +16,7 @@ The project focuses on the processing and observability layer that would sit beh
 - Thread-safe batch processing with concurrency regression tests
 - FastAPI request validation and interactive OpenAPI documentation
 - Prometheus-compatible processing counters and health ratios
+- Live browser dashboard for event submission and stream-health monitoring
 - Non-root Docker image with an application health check
 - Automated unit, API, concurrency, and container smoke tests
 
@@ -36,7 +37,7 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-The API is available at `http://127.0.0.1:8000`, with interactive documentation at `http://127.0.0.1:8000/docs`.
+The dashboard is available at `http://127.0.0.1:8000/dashboard`. The API is available at `http://127.0.0.1:8000`, with interactive documentation at `http://127.0.0.1:8000/docs`.
 
 ## Run with Docker
 
@@ -101,6 +102,7 @@ curl http://127.0.0.1:8000/events/recovery
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/health` | Service readiness |
+| `GET` | `/dashboard` | Live event-processing and reliability dashboard |
 | `GET` | `/metrics` | Prometheus-compatible operational metrics |
 | `POST` | `/events` | Process one telemetry event |
 | `POST` | `/events/batch` | Process 1 to 1000 events atomically |
@@ -144,9 +146,12 @@ Bounded       Health and
 history       recovery reports
 ```
 
-## Next milestones
+## v1.0 scope
+
+SentinelStream v1.0 includes validated event ingestion, bounded thread-safe processing, anomaly and replay protection, operational diagnostics, Prometheus metrics, a live dashboard, automated tests, and a containerized runnable demo.
+
+## Future extensions
 
 - Add a broker adapter for Kafka-compatible ingestion
 - Persist events and checkpoints outside process memory
-- Provide a live operational dashboard
 - Add sustained load and multi-process deployment tests
