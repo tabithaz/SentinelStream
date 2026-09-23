@@ -1,7 +1,9 @@
 from dataclasses import asdict
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import Body, FastAPI, Query, Response
+from fastapi.responses import FileResponse
 
 from app.bursts import analyze_event_bursts
 from app.capacity import summarize_backpressure
@@ -11,13 +13,19 @@ from app.prometheus import render_prometheus_metrics
 from app.recovery import recommend_recovery
 from app.reliability import classify_stream_reliability
 
-app = FastAPI(title="SentinelStream", version="0.10.0")
+app = FastAPI(title="SentinelStream", version="1.0.0")
 processor = EventProcessor()
+DASHBOARD_PATH = Path(__file__).parent / "static" / "dashboard.html"
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "healthy", "service": "sentinelstream"}
+
+
+@app.get("/dashboard", include_in_schema=False)
+def dashboard() -> FileResponse:
+    return FileResponse(DASHBOARD_PATH, media_type="text/html")
 
 
 @app.get("/metrics", include_in_schema=False)
