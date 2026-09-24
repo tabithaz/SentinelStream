@@ -2,7 +2,7 @@
 
 SentinelStream is a FastAPI service for validating telemetry events and diagnosing the health of event-processing streams. It accepts individual events or bounded batches, detects anomalies, duplicates, and ordering problems, and exposes operational reports for throughput, capacity, reliability, and recovery.
 
-The project focuses on the processing and observability layer that would sit behind a Kafka or similar event broker. Its current v0.9 implementation is self-contained and uses bounded in-memory state so it can be run and reviewed without external infrastructure.
+The project focuses on the processing and observability layer that would sit behind a Kafka or similar event broker. Its current implementation is self-contained: event history and deduplication keys are bounded in memory so it can be run and reviewed without external infrastructure. Source and metric aggregates are retained for the process lifetime.
 
 ## Current capabilities
 
@@ -154,4 +154,5 @@ SentinelStream v1.0 includes validated event ingestion, bounded thread-safe proc
 
 - Add a broker adapter for Kafka-compatible ingestion
 - Persist events and checkpoints outside process memory
+- Cap or expire per-source aggregates for untrusted, high-cardinality source IDs
 - Add sustained load and multi-process deployment tests
