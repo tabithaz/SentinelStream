@@ -7,6 +7,7 @@ The project focuses on the processing and observability layer that would sit beh
 ## Current capabilities
 
 - Validated single-event and batch ingestion
+- Rejection of non-finite readings and blank stream identifiers before state mutation
 - UTC timestamp normalization and out-of-order detection
 - Configurable metric thresholds and anomaly classification
 - Bounded event history and duplicate-delivery suppression
@@ -119,6 +120,9 @@ curl http://127.0.0.1:8000/events/recovery
 | `GET` | `/events/recovery` | Recommend recovery action |
 
 Query parameters are validated by FastAPI. Recent-history and batch sizes are bounded to keep request work and process memory predictable.
+Event values must be finite JSON numbers. Source and metric identifiers are trimmed,
+limited to 100 characters, and rejected when blank; an invalid batch is rejected
+before any event in that request changes processor state.
 
 The `/metrics` endpoint uses Prometheus text exposition format and reports received, accepted, duplicate, anomalous, and out-of-order event totals along with anomaly ratios and monitored-source counts. The endpoint intentionally avoids source labels so untrusted source names cannot create unbounded metric cardinality.
 
