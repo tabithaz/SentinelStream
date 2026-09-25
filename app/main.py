@@ -1,9 +1,11 @@
 from dataclasses import asdict
+import math
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import Body, FastAPI, Query, Response
-from fastapi.responses import FileResponse
+from fastapi import Body, FastAPI, Query, Request, Response
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import FileResponse, JSONResponse
 
 from app.bursts import analyze_event_bursts
 from app.capacity import summarize_backpressure
@@ -16,6 +18,24 @@ from app.reliability import classify_stream_reliability
 app = FastAPI(title="SentinelStream", version="1.0.0")
 processor = EventProcessor()
 DASHBOARD_PATH = Path(__file__).parent / "static" / "dashboard.html"
+
+
+def _json_safe(value: object) -> object:
+    if isinstance(value, float) and not math.isfinite(value):
+        return str(value)
+    if isinstance(value, dict):
+        return {key: _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    return value
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_response(
+    _request: Request,
+    error: RequestValidationError,
+) -> JSONResponse:
+    return JSONResponse(status_code=422, content={"detail": _json_safe(error.errors())})
 
 
 @app.get("/health")
