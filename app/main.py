@@ -1,10 +1,11 @@
 from dataclasses import asdict
+from datetime import datetime, timezone
 import json
 import math
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import Body, FastAPI, Query, Request, Response
+from fastapi import Body, FastAPI, HTTPException, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 
@@ -19,6 +20,22 @@ from app.reliability import classify_stream_reliability
 app = FastAPI(title="SentinelStream", version="1.0.0")
 processor = EventProcessor()
 DASHBOARD_PATH = Path(__file__).parent / "static" / "dashboard.html"
+
+
+def _utc_timestamp(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _validate_time_window(since: datetime | None, until: datetime | None) -> None:
+    if since is not None and until is not None and since > until:
+        raise HTTPException(
+            status_code=422,
+            detail="since must be earlier than or equal to until",
+        )
 
 
 def _json_safe(value: object) -> object:
@@ -78,12 +95,19 @@ def recent_events(
     metric: str | None = None,
     source: str | None = None,
     anomalies_only: bool = False,
+    since: datetime | None = None,
+    until: datetime | None = None,
 ) -> list[dict]:
+    since = _utc_timestamp(since)
+    until = _utc_timestamp(until)
+    _validate_time_window(since, until)
     return processor.recent_events(
         limit=limit,
         metric=metric,
         source=source,
         anomalies_only=anomalies_only,
+        since=since,
+        until=until,
     )
 
 
@@ -93,13 +117,20 @@ def export_events(
     metric: str | None = None,
     source: str | None = None,
     anomalies_only: bool = False,
+    since: datetime | None = None,
+    until: datetime | None = None,
 ) -> Response:
     """Export bounded recent history as newline-delimited JSON."""
+    since = _utc_timestamp(since)
+    until = _utc_timestamp(until)
+    _validate_time_window(since, until)
     events = processor.recent_events(
         limit=limit,
         metric=metric,
         source=source,
         anomalies_only=anomalies_only,
+        since=since,
+        until=until,
     )
     content = "".join(
         json.dumps(event, separators=(",", ":"), allow_nan=False) + "\n"

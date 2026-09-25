@@ -122,15 +122,24 @@ class EventProcessor:
         metric: str | None = None,
         source: str | None = None,
         anomalies_only: bool = False,
+        since: datetime | None = None,
+        until: datetime | None = None,
     ) -> list[dict]:
         if limit <= 0:
             raise ValueError("limit must be greater than zero")
+        if since is not None and until is not None and since > until:
+            raise ValueError("since must be earlier than or equal to until")
 
         normalized_metric = metric.lower() if metric is not None else None
         matches: list[dict] = []
 
         with self._lock:
             for item in reversed(self._recent_events):
+                timestamp = datetime.fromisoformat(item["timestamp"])
+                if since is not None and timestamp < since:
+                    continue
+                if until is not None and timestamp > until:
+                    continue
                 if normalized_metric is not None and item["metric"].lower() != normalized_metric:
                     continue
                 if source is not None and item["source"] != source:

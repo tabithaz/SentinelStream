@@ -128,10 +128,13 @@ before any event in that request changes processor state.
 
 Export up to 1,000 recent records for incident analysis or replay tooling. The
 same metric, source, and anomaly filters available for recent history are
-supported, and each response includes an `X-Event-Count` header:
+supported, along with inclusive ISO 8601 `since` and `until` timestamps. Each
+response includes an `X-Event-Count` header:
 
 ```bash
 curl -OJ "http://127.0.0.1:8000/events/export?source=sensor-alpha&anomalies_only=true"
+
+curl -OJ "http://127.0.0.1:8000/events/export?since=2026-09-25T14:00:00Z&until=2026-09-25T15:00:00Z"
 ```
 
 The response uses newline-delimited JSON so records can be processed as a
