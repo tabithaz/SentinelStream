@@ -1,4 +1,5 @@
 from dataclasses import asdict
+import json
 import math
 from pathlib import Path
 from typing import Annotated
@@ -83,6 +84,34 @@ def recent_events(
         metric=metric,
         source=source,
         anomalies_only=anomalies_only,
+    )
+
+
+@app.get("/events/export", include_in_schema=True)
+def export_events(
+    limit: int = Query(default=1000, ge=1, le=1000),
+    metric: str | None = None,
+    source: str | None = None,
+    anomalies_only: bool = False,
+) -> Response:
+    """Export bounded recent history as newline-delimited JSON."""
+    events = processor.recent_events(
+        limit=limit,
+        metric=metric,
+        source=source,
+        anomalies_only=anomalies_only,
+    )
+    content = "".join(
+        json.dumps(event, separators=(",", ":"), allow_nan=False) + "\n"
+        for event in events
+    )
+    return Response(
+        content=content,
+        media_type="application/x-ndjson",
+        headers={
+            "Content-Disposition": 'attachment; filename="sentinelstream-events.ndjson"',
+            "X-Event-Count": str(len(events)),
+        },
     )
 
 

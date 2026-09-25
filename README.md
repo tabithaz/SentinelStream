@@ -11,6 +11,7 @@ The project focuses on the processing and observability layer that would sit beh
 - UTC timestamp normalization and out-of-order detection
 - Configurable metric thresholds and anomaly classification
 - Bounded event history and duplicate-delivery suppression
+- Filtered NDJSON event export for incident analysis and replay pipelines
 - Source and metric health rankings
 - Throughput, burst, capacity, backlog, and partition-skew diagnostics
 - Reliability, retry, checkpoint, replay, dead-letter, and recovery analysis modules
@@ -108,6 +109,7 @@ curl http://127.0.0.1:8000/events/recovery
 | `POST` | `/events` | Process one telemetry event |
 | `POST` | `/events/batch` | Process 1 to 1000 events atomically |
 | `GET` | `/events/recent` | Query bounded recent history |
+| `GET` | `/events/export` | Export filtered recent history as NDJSON |
 | `GET` | `/events/stats` | Inspect processing, anomaly, duplicate, and ordering totals |
 | `GET` | `/events/sources` | Rank source health |
 | `GET` | `/events/metrics` | Rank metric health |
@@ -123,6 +125,17 @@ Query parameters are validated by FastAPI. Recent-history and batch sizes are bo
 Event values must be finite JSON numbers. Source and metric identifiers are trimmed,
 limited to 100 characters, and rejected when blank; an invalid batch is rejected
 before any event in that request changes processor state.
+
+Export up to 1,000 recent records for incident analysis or replay tooling. The
+same metric, source, and anomaly filters available for recent history are
+supported, and each response includes an `X-Event-Count` header:
+
+```bash
+curl -OJ "http://127.0.0.1:8000/events/export?source=sensor-alpha&anomalies_only=true"
+```
+
+The response uses newline-delimited JSON so records can be processed as a
+stream without loading the entire export into memory.
 
 The `/metrics` endpoint uses Prometheus text exposition format and reports received, accepted, duplicate, anomalous, and out-of-order event totals along with anomaly ratios and monitored-source counts. The endpoint intentionally avoids source labels so untrusted source names cannot create unbounded metric cardinality.
 
