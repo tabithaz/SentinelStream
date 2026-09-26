@@ -11,6 +11,7 @@ The project focuses on the processing and observability layer that would sit beh
 - UTC timestamp normalization and out-of-order detection
 - Configurable metric thresholds and anomaly classification
 - Bounded event history and duplicate-delivery suppression
+- Bounded source aggregates and LRU stream-ordering state for cardinality safety
 - Filtered NDJSON event export for incident analysis and replay pipelines
 - Source and metric health rankings
 - Throughput, burst, capacity, backlog, and partition-skew diagnostics
@@ -127,6 +128,12 @@ Event values must be finite JSON numbers. Source and metric identifiers are trim
 limited to 100 characters, and rejected when blank; an invalid batch is rejected
 before any event in that request changes processor state.
 
+Per-source health aggregates retain up to 1,000 source identities. Events from
+additional identities are counted in a bounded overflow aggregate instead of
+growing memory without a bound. Timestamp state used for ordering detection is
+maintained as a 5,000-stream LRU window. The stats response exposes both limits,
+current usage, and overflow event, anomaly, and ordering counts.
+
 Export up to 1,000 recent records for incident analysis or replay tooling. The
 same metric, source, and anomaly filters available for recent history are
 supported, along with inclusive ISO 8601 `since` and `until` timestamps. Each
@@ -180,5 +187,4 @@ SentinelStream v1.0 includes validated event ingestion, bounded thread-safe proc
 
 - Add a broker adapter for Kafka-compatible ingestion
 - Persist events and checkpoints outside process memory
-- Cap or expire per-source aggregates for untrusted, high-cardinality source IDs
 - Add sustained load and multi-process deployment tests
