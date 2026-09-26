@@ -1,9 +1,13 @@
 from dataclasses import asdict
 from datetime import datetime, timezone
 import json
+import logging
 import math
 from pathlib import Path
+import re
+import time
 from typing import Annotated
+from uuid import uuid4
 
 from fastapi import Body, FastAPI, HTTPException, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
@@ -20,6 +24,35 @@ from app.reliability import classify_stream_reliability
 app = FastAPI(title="SentinelStream", version="1.0.0")
 processor = EventProcessor()
 DASHBOARD_PATH = Path(__file__).parent / "static" / "dashboard.html"
+LOGGER = logging.getLogger("sentinelstream.access")
+REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
+
+
+@app.middleware("http")
+async def request_trace(request: Request, call_next):
+    supplied_request_id = request.headers.get("X-Request-ID", "")
+    request_id = (
+        supplied_request_id
+        if REQUEST_ID_PATTERN.fullmatch(supplied_request_id)
+        else uuid4().hex
+    )
+    started_at = time.perf_counter()
+    response = await call_next(request)
+    duration_ms = round((time.perf_counter() - started_at) * 1000, 3)
+    response.headers["X-Request-ID"] = request_id
+    LOGGER.info(
+        json.dumps(
+            {
+                "request_id": request_id,
+                "method": request.method,
+                "path": request.url.path,
+                "status_code": response.status_code,
+                "duration_ms": duration_ms,
+            },
+            separators=(",", ":"),
+        )
+    )
+    return response
 
 
 def _utc_timestamp(value: datetime | None) -> datetime | None:

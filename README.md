@@ -18,6 +18,7 @@ The project focuses on the processing and observability layer that would sit beh
 - Thread-safe batch processing with concurrency regression tests
 - FastAPI request validation and interactive OpenAPI documentation
 - Prometheus-compatible processing counters and health ratios
+- Request IDs and structured access logs for cross-service tracing
 - Live browser dashboard for event submission and stream-health monitoring
 - Non-root Docker image with an application health check
 - Automated unit, API, concurrency, and container smoke tests
@@ -141,6 +142,11 @@ The response uses newline-delimited JSON so records can be processed as a
 stream without loading the entire export into memory.
 
 The `/metrics` endpoint uses Prometheus text exposition format and reports received, accepted, duplicate, anomalous, and out-of-order event totals along with anomaly ratios and monitored-source counts. The endpoint intentionally avoids source labels so untrusted source names cannot create unbounded metric cardinality.
+
+Every response includes an `X-Request-ID` header. Callers can provide a safe
+request ID using the same header, or SentinelStream generates one. Each request
+also writes a compact JSON access log containing the request ID, HTTP method,
+path, status code, and duration in milliseconds.
 
 ## Run tests
 
