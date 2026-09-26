@@ -12,6 +12,7 @@ from uuid import uuid4
 from fastapi import Body, FastAPI, HTTPException, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
+from pydantic import ValidationError
 
 from app.bursts import analyze_event_bursts
 from app.capacity import summarize_backpressure
@@ -26,6 +27,8 @@ processor = EventProcessor()
 DASHBOARD_PATH = Path(__file__).parent / "static" / "dashboard.html"
 LOGGER = logging.getLogger("sentinelstream.access")
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
+MAX_REPLAY_BYTES = 1024 * 1024
+MAX_REPLAY_EVENTS = 1000
 
 
 @app.middleware("http")
@@ -119,6 +122,48 @@ def process_event_batch(
         Body(min_length=1, max_length=1000),
     ],
 ) -> dict:
+    return processor.process_many(events)
+
+
+@app.post("/events/replay")
+async def replay_events(request: Request) -> dict:
+    """Validate and atomically process a bounded NDJSON event export."""
+    media_type = request.headers.get("content-type", "").split(";", 1)[0].lower()
+    if media_type != "application/x-ndjson":
+        raise HTTPException(
+            status_code=415,
+            detail="content type must be application/x-ndjson",
+        )
+
+    body = await request.body()
+    if len(body) > MAX_REPLAY_BYTES:
+        raise HTTPException(status_code=413, detail="replay payload exceeds 1 MiB")
+    try:
+        lines = body.decode("utf-8").splitlines()
+    except UnicodeDecodeError as error:
+        raise HTTPException(status_code=422, detail="replay payload must be UTF-8") from error
+    if not lines:
+        raise HTTPException(status_code=422, detail="replay payload contains no events")
+    if len(lines) > MAX_REPLAY_EVENTS:
+        raise HTTPException(status_code=413, detail="replay payload exceeds 1000 events")
+
+    events: list[TelemetryEvent] = []
+    for line_number, line in enumerate(lines, start=1):
+        if not line.strip():
+            raise HTTPException(
+                status_code=422,
+                detail=f"replay line {line_number}: blank records are not allowed",
+            )
+        try:
+            record = json.loads(line)
+            events.append(TelemetryEvent.model_validate(record))
+        except (json.JSONDecodeError, ValidationError) as error:
+            raise HTTPException(
+                status_code=422,
+                detail=f"replay line {line_number}: invalid telemetry event",
+            ) from error
+
+    events.sort(key=lambda event: event.timestamp)
     return processor.process_many(events)
 
 

@@ -13,6 +13,7 @@ The project focuses on the processing and observability layer that would sit beh
 - Bounded event history and duplicate-delivery suppression
 - Bounded source aggregates and LRU stream-ordering state for cardinality safety
 - Filtered NDJSON event export for incident analysis and replay pipelines
+- Bounded, atomic NDJSON replay for incident reproduction
 - Source and metric health rankings
 - Throughput, burst, capacity, backlog, and partition-skew diagnostics
 - Reliability, retry, checkpoint, replay, dead-letter, and recovery analysis modules
@@ -110,6 +111,7 @@ curl http://127.0.0.1:8000/events/recovery
 | `GET` | `/metrics` | Prometheus-compatible operational metrics |
 | `POST` | `/events` | Process one telemetry event |
 | `POST` | `/events/batch` | Process 1 to 1000 events atomically |
+| `POST` | `/events/replay` | Validate and replay up to 1,000 NDJSON events atomically |
 | `GET` | `/events/recent` | Query bounded recent history |
 | `GET` | `/events/export` | Export filtered recent history as NDJSON |
 | `GET` | `/events/stats` | Inspect processing, anomaly, duplicate, and ordering totals |
@@ -147,6 +149,19 @@ curl -OJ "http://127.0.0.1:8000/events/export?since=2026-09-25T14:00:00Z&until=2
 
 The response uses newline-delimited JSON so records can be processed as a
 stream without loading the entire export into memory.
+
+Replay an exported incident directly into a clean or restored instance:
+
+```bash
+curl -X POST http://127.0.0.1:8000/events/replay \
+  -H "Content-Type: application/x-ndjson" \
+  --data-binary @sentinelstream-events.ndjson
+```
+
+Replay uploads are limited to 1 MiB and 1,000 events. Every line is parsed and
+validated before processing begins, so malformed input cannot partially mutate
+stream state. Valid events are replayed in timestamp order because exports are
+newest-first.
 
 The `/metrics` endpoint uses Prometheus text exposition format and reports received, accepted, duplicate, anomalous, and out-of-order event totals along with anomaly ratios and monitored-source counts. The endpoint intentionally avoids source labels so untrusted source names cannot create unbounded metric cardinality.
 
