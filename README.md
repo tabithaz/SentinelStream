@@ -12,6 +12,7 @@ The project focuses on the processing and observability layer that would sit beh
 - Configurable metric thresholds and anomaly classification
 - Bounded event history and duplicate-delivery suppression
 - Deterministic event IDs for tracing accepted events and duplicate deliveries
+- Direct event lookup by ID within the bounded retention window
 - Bounded source aggregates and LRU stream-ordering state for cardinality safety
 - Filtered NDJSON event export for incident analysis and replay pipelines
 - Bounded, atomic NDJSON replay for incident reproduction
@@ -115,6 +116,7 @@ curl http://127.0.0.1:8000/events/recovery
 | `POST` | `/events/batch` | Process 1 to 1000 events atomically |
 | `POST` | `/events/replay` | Validate and replay up to 1,000 NDJSON events atomically |
 | `GET` | `/events/recent` | Query bounded recent history |
+| `GET` | `/events/id/{event_id}` | Retrieve one retained event by its deterministic ID |
 | `GET` | `/events/export` | Export filtered recent history as NDJSON |
 | `GET` | `/events/stats` | Inspect processing, anomaly, duplicate, and ordering totals |
 | `GET` | `/events/sources` | Rank source health |
@@ -136,6 +138,14 @@ Every accepted or duplicate event response includes a deterministic SHA-256 even
 derived from its normalized source, metric, value, and UTC timestamp. The same event
 keeps the same ID across ingestion, export, and replay, which makes duplicate deliveries
 traceable without relying on process-local sequence numbers.
+
+Retrieve an accepted event directly while it remains in bounded history:
+
+```bash
+curl http://127.0.0.1:8000/events/id/16669d45081d7a7a4907b54a8c1fbc60872385426f3e6991fa462824b255566a
+```
+
+Malformed IDs return HTTP 422 and valid IDs outside the retained history return HTTP 404.
 
 Per-source health aggregates retain up to 1,000 source identities. Events from
 additional identities are counted in a bounded overflow aggregate instead of

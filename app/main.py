@@ -9,7 +9,15 @@ import time
 from typing import Annotated
 from uuid import uuid4
 
-from fastapi import Body, FastAPI, HTTPException, Query, Request, Response
+from fastapi import (
+    Body,
+    FastAPI,
+    HTTPException,
+    Path as PathParameter,
+    Query,
+    Request,
+    Response,
+)
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import ValidationError
@@ -187,6 +195,16 @@ def recent_events(
         since=since,
         until=until,
     )
+
+
+@app.get("/events/id/{event_id}")
+def event_by_id(
+    event_id: Annotated[str, PathParameter(pattern=r"^[0-9a-f]{64}$")],
+) -> dict:
+    event = processor.event_by_id(event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="event not found in retained history")
+    return event
 
 
 @app.get("/events/export", include_in_schema=True)

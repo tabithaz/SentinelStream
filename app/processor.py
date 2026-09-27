@@ -186,6 +186,14 @@ class EventProcessor:
 
         return matches
 
+    def event_by_id(self, event_id: str) -> dict | None:
+        """Find an accepted event within the bounded history window."""
+        with self._lock:
+            for item in reversed(self._recent_events):
+                if item["event_id"] == event_id:
+                    return item.copy()
+        return None
+
     def throughput_summary(
         self,
         window_seconds: int = 60,
