@@ -207,6 +207,29 @@ def event_by_id(
     return event
 
 
+@app.get("/events/page")
+def paginated_events(
+    limit: int = Query(default=100, ge=1, le=1000),
+    cursor: str | None = Query(default=None, pattern=r"^[0-9a-f]{64}$"),
+    metric: str | None = None,
+    source: str | None = None,
+    anomalies_only: bool = False,
+) -> dict:
+    try:
+        return processor.event_page(
+            limit=limit,
+            cursor=cursor,
+            metric=metric,
+            source=source,
+            anomalies_only=anomalies_only,
+        )
+    except KeyError as error:
+        raise HTTPException(
+            status_code=404,
+            detail="cursor not found in retained history",
+        ) from error
+
+
 @app.get("/events/export", include_in_schema=True)
 def export_events(
     limit: int = Query(default=1000, ge=1, le=1000),

@@ -13,6 +13,7 @@ The project focuses on the processing and observability layer that would sit beh
 - Bounded event history and duplicate-delivery suppression
 - Deterministic event IDs for tracing accepted events and duplicate deliveries
 - Direct event lookup by ID within the bounded retention window
+- Cursor-based pagination through retained event history
 - Bounded source aggregates and LRU stream-ordering state for cardinality safety
 - Filtered NDJSON event export for incident analysis and replay pipelines
 - Bounded, atomic NDJSON replay for incident reproduction
@@ -116,6 +117,7 @@ curl http://127.0.0.1:8000/events/recovery
 | `POST` | `/events/batch` | Process 1 to 1000 events atomically |
 | `POST` | `/events/replay` | Validate and replay up to 1,000 NDJSON events atomically |
 | `GET` | `/events/recent` | Query bounded recent history |
+| `GET` | `/events/page` | Traverse retained history with a stable event-ID cursor |
 | `GET` | `/events/id/{event_id}` | Retrieve one retained event by its deterministic ID |
 | `GET` | `/events/export` | Export filtered recent history as NDJSON |
 | `GET` | `/events/stats` | Inspect processing, anomaly, duplicate, and ordering totals |
@@ -146,6 +148,12 @@ curl http://127.0.0.1:8000/events/id/16669d45081d7a7a4907b54a8c1fbc60872385426f3
 ```
 
 Malformed IDs return HTTP 422 and valid IDs outside the retained history return HTTP 404.
+
+For incremental incident tooling, `GET /events/page?limit=100` returns events
+newest-first with `has_more` and a stable `next_cursor`. Pass that cursor into
+the next request; source, metric, and anomaly filters remain available. A cursor
+that has rolled out of bounded history returns HTTP 404 instead of silently
+skipping data.
 
 Per-source health aggregates retain up to 1,000 source identities. Events from
 additional identities are counted in a bounded overflow aggregate instead of

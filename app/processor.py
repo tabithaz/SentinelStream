@@ -194,6 +194,51 @@ class EventProcessor:
                     return item.copy()
         return None
 
+    def event_page(
+        self,
+        limit: int = 100,
+        cursor: str | None = None,
+        metric: str | None = None,
+        source: str | None = None,
+        anomalies_only: bool = False,
+    ) -> dict:
+        """Page through bounded history newest-first using a stable event ID cursor."""
+        if limit <= 0:
+            raise ValueError("limit must be greater than zero")
+        normalized_metric = metric.lower() if metric is not None else None
+
+        with self._lock:
+            history = list(reversed(self._recent_events))
+
+        start = 0
+        if cursor is not None:
+            for index, item in enumerate(history):
+                if item["event_id"] == cursor:
+                    start = index + 1
+                    break
+            else:
+                raise KeyError("cursor not found in retained history")
+
+        matches = []
+        for item in history[start:]:
+            if normalized_metric is not None and item["metric"].lower() != normalized_metric:
+                continue
+            if source is not None and item["source"] != source:
+                continue
+            if anomalies_only and not item["anomaly"]:
+                continue
+            matches.append(item.copy())
+            if len(matches) > limit:
+                break
+
+        has_more = len(matches) > limit
+        events = matches[:limit]
+        return {
+            "events": events,
+            "next_cursor": events[-1]["event_id"] if has_more else None,
+            "has_more": has_more,
+        }
+
     def throughput_summary(
         self,
         window_seconds: int = 60,
