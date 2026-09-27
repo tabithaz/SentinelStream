@@ -11,6 +11,7 @@ The project focuses on the processing and observability layer that would sit beh
 - UTC timestamp normalization and out-of-order detection
 - Configurable metric thresholds and anomaly classification
 - Bounded event history and duplicate-delivery suppression
+- Deterministic event IDs for tracing accepted events and duplicate deliveries
 - Bounded source aggregates and LRU stream-ordering state for cardinality safety
 - Filtered NDJSON event export for incident analysis and replay pipelines
 - Bounded, atomic NDJSON replay for incident reproduction
@@ -77,6 +78,7 @@ Example response:
 
 ```json
 {
+  "event_id": "16669d45081d7a7a4907b54a8c1fbc60872385426f3e6991fa462824b255566a",
   "accepted": true,
   "duplicate": false,
   "anomaly": false,
@@ -129,6 +131,11 @@ Query parameters are validated by FastAPI. Recent-history and batch sizes are bo
 Event values must be finite JSON numbers. Source and metric identifiers are trimmed,
 limited to 100 characters, and rejected when blank; an invalid batch is rejected
 before any event in that request changes processor state.
+
+Every accepted or duplicate event response includes a deterministic SHA-256 event ID
+derived from its normalized source, metric, value, and UTC timestamp. The same event
+keeps the same ID across ingestion, export, and replay, which makes duplicate deliveries
+traceable without relying on process-local sequence numbers.
 
 Per-source health aggregates retain up to 1,000 source identities. Events from
 additional identities are counted in a bounded overflow aggregate instead of

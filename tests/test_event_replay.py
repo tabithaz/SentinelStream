@@ -48,6 +48,9 @@ def test_exported_events_can_be_replayed() -> None:
     assert replayed.json()["accepted"] == 2
     assert replayed.json()["anomalies"] == 1
     assert replayed.json()["out_of_order"] == 0
+    original_ids = {item["event_id"] for item in original.json()["results"]}
+    replayed_ids = {item["event_id"] for item in replayed.json()["results"]}
+    assert replayed_ids == original_ids
 
 
 def test_invalid_replay_is_atomic(isolated_processor: EventProcessor) -> None:

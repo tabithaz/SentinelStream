@@ -1,6 +1,8 @@
+import hashlib
+import json
 from collections import OrderedDict, defaultdict, deque
-from datetime import datetime, timedelta
 from collections.abc import Mapping
+from datetime import datetime, timedelta
 from threading import RLock
 
 from app.models import TelemetryEvent
@@ -59,10 +61,12 @@ class EventProcessor:
         with self._lock:
             metric = event.metric.lower()
             event_key = self._event_key(event)
+            event_id = self._event_id(event_key)
 
             if event_key in self._event_key_set:
                 self._duplicates += 1
                 return {
+                    "event_id": event_id,
                     "accepted": False,
                     "duplicate": True,
                     "source": event.source,
@@ -109,6 +113,7 @@ class EventProcessor:
                     self._source_anomalies[source_bucket] += 1
 
             result = {
+                "event_id": event_id,
                 "accepted": True,
                 "duplicate": False,
                 "anomaly": anomaly,
@@ -391,6 +396,16 @@ class EventProcessor:
             event.value,
             event.timestamp.isoformat(),
         )
+
+    @staticmethod
+    def _event_id(event_key: tuple[str, str, float, str]) -> str:
+        canonical_event = json.dumps(
+            event_key,
+            ensure_ascii=False,
+            allow_nan=False,
+            separators=(",", ":"),
+        )
+        return hashlib.sha256(canonical_event.encode("utf-8")).hexdigest()
 
     @staticmethod
     def _normalize_thresholds(
