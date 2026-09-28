@@ -61,8 +61,8 @@ class EventProcessor:
         self._latest_timestamps: OrderedDict[tuple[str, str], datetime] = OrderedDict()
         self._recent_events: deque[dict] = deque(maxlen=history_size)
         self._deduplication_size = deduplication_size
-        self._event_keys: deque[tuple[str, str, float, str]] = deque()
-        self._event_key_set: set[tuple[str, str, float, str]] = set()
+        self._event_keys: deque[tuple] = deque()
+        self._event_key_set: set[tuple] = set()
         self._idempotency_size = idempotency_size
         self._idempotency_results: OrderedDict[str, tuple[tuple, dict]] = OrderedDict()
         self._lock = RLock()
@@ -75,7 +75,7 @@ class EventProcessor:
 
             if event_key in self._event_key_set:
                 self._duplicates += 1
-                return {
+                duplicate = {
                     "event_id": event_id,
                     "accepted": False,
                     "duplicate": True,
@@ -84,6 +84,9 @@ class EventProcessor:
                     "value": event.value,
                     "timestamp": event.timestamp.isoformat(),
                 }
+                if event.correlation_id is not None:
+                    duplicate["correlation_id"] = event.correlation_id
+                return duplicate
 
             source_bucket = self._source_bucket(event.source)
             stream_key = (event.source, metric)
@@ -133,6 +136,8 @@ class EventProcessor:
                 "value": event.value,
                 "timestamp": event.timestamp.isoformat(),
             }
+            if event.correlation_id is not None:
+                result["correlation_id"] = event.correlation_id
             self._recent_events.append(result.copy())
             return result
 
@@ -194,6 +199,7 @@ class EventProcessor:
         limit: int = 100,
         metric: str | None = None,
         source: str | None = None,
+        correlation_id: str | None = None,
         anomalies_only: bool = False,
         since: datetime | None = None,
         until: datetime | None = None,
@@ -216,6 +222,8 @@ class EventProcessor:
                 if normalized_metric is not None and item["metric"].lower() != normalized_metric:
                     continue
                 if source is not None and item["source"] != source:
+                    continue
+                if correlation_id is not None and item.get("correlation_id") != correlation_id:
                     continue
                 if anomalies_only and not item["anomaly"]:
                     continue
@@ -285,6 +293,7 @@ class EventProcessor:
         cursor: str | None = None,
         metric: str | None = None,
         source: str | None = None,
+        correlation_id: str | None = None,
         anomalies_only: bool = False,
     ) -> dict:
         """Page through bounded history newest-first using a stable event ID cursor."""
@@ -309,6 +318,8 @@ class EventProcessor:
             if normalized_metric is not None and item["metric"].lower() != normalized_metric:
                 continue
             if source is not None and item["source"] != source:
+                continue
+            if correlation_id is not None and item.get("correlation_id") != correlation_id:
                 continue
             if anomalies_only and not item["anomaly"]:
                 continue
@@ -542,7 +553,7 @@ class EventProcessor:
             return "watch"
         return "healthy"
 
-    def _remember_event_key(self, event_key: tuple[str, str, float, str]) -> None:
+    def _remember_event_key(self, event_key: tuple) -> None:
         if len(self._event_keys) == self._deduplication_size:
             expired = self._event_keys.popleft()
             self._event_key_set.remove(expired)
@@ -551,16 +562,19 @@ class EventProcessor:
         self._event_key_set.add(event_key)
 
     @staticmethod
-    def _event_key(event: TelemetryEvent) -> tuple[str, str, float, str]:
-        return (
+    def _event_key(event: TelemetryEvent) -> tuple:
+        key = (
             event.source,
             event.metric.lower(),
             event.value,
             event.timestamp.isoformat(),
         )
+        if event.correlation_id is not None:
+            return (*key, event.correlation_id)
+        return key
 
     @staticmethod
-    def _event_id(event_key: tuple[str, str, float, str]) -> str:
+    def _event_id(event_key: tuple) -> str:
         canonical_event = json.dumps(
             event_key,
             ensure_ascii=False,

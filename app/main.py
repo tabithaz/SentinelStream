@@ -83,6 +83,15 @@ def _validate_time_window(since: datetime | None, until: datetime | None) -> Non
         )
 
 
+def _normalize_correlation_filter(correlation_id: str | None) -> str | None:
+    if correlation_id is None:
+        return None
+    normalized = correlation_id.strip()
+    if not normalized:
+        raise HTTPException(status_code=422, detail="correlation_id must not be blank")
+    return normalized
+
+
 def _json_safe(value: object) -> object:
     if isinstance(value, float) and not math.isfinite(value):
         return str(value)
@@ -219,10 +228,12 @@ def recent_events(
     limit: int = Query(default=100, ge=1, le=1000),
     metric: str | None = None,
     source: str | None = None,
+    correlation_id: str | None = Query(default=None, min_length=1, max_length=100),
     anomalies_only: bool = False,
     since: datetime | None = None,
     until: datetime | None = None,
 ) -> list[dict]:
+    correlation_id = _normalize_correlation_filter(correlation_id)
     since = _utc_timestamp(since)
     until = _utc_timestamp(until)
     _validate_time_window(since, until)
@@ -230,6 +241,7 @@ def recent_events(
         limit=limit,
         metric=metric,
         source=source,
+        correlation_id=correlation_id,
         anomalies_only=anomalies_only,
         since=since,
         until=until,
@@ -270,14 +282,17 @@ def paginated_events(
     cursor: str | None = Query(default=None, pattern=r"^[0-9a-f]{64}$"),
     metric: str | None = None,
     source: str | None = None,
+    correlation_id: str | None = Query(default=None, min_length=1, max_length=100),
     anomalies_only: bool = False,
 ) -> dict:
+    correlation_id = _normalize_correlation_filter(correlation_id)
     try:
         return processor.event_page(
             limit=limit,
             cursor=cursor,
             metric=metric,
             source=source,
+            correlation_id=correlation_id,
             anomalies_only=anomalies_only,
         )
     except KeyError as error:
@@ -292,6 +307,7 @@ def export_events(
     limit: int = Query(default=1000, ge=1, le=1000),
     metric: str | None = None,
     source: str | None = None,
+    correlation_id: str | None = Query(default=None, min_length=1, max_length=100),
     anomalies_only: bool = False,
     since: datetime | None = None,
     until: datetime | None = None,
@@ -300,10 +316,12 @@ def export_events(
     since = _utc_timestamp(since)
     until = _utc_timestamp(until)
     _validate_time_window(since, until)
+    correlation_id = _normalize_correlation_filter(correlation_id)
     events = processor.recent_events(
         limit=limit,
         metric=metric,
         source=source,
+        correlation_id=correlation_id,
         anomalies_only=anomalies_only,
         since=since,
         until=until,

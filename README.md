@@ -13,6 +13,7 @@ The project focuses on the processing and observability layer that would sit beh
 - Configurable metric thresholds and anomaly classification
 - Bounded event history and duplicate-delivery suppression
 - Deterministic event IDs for tracing accepted events and duplicate deliveries
+- End-to-end correlation IDs for distributed incident tracing
 - Direct event lookup by ID within the bounded retention window
 - Bounded event-context windows for incident investigation
 - Cursor-based pagination through retained event history
@@ -73,6 +74,7 @@ curl -X POST http://127.0.0.1:8000/events \
   -d '{
     "source": "sensor-alpha",
     "metric": "temperature",
+    "correlation_id": "incident-2026-09-22-001",
     "value": 72.4,
     "timestamp": "2026-09-22T18:00:00Z"
   }'
@@ -89,6 +91,7 @@ Example response:
   "out_of_order": false,
   "source": "sensor-alpha",
   "metric": "temperature",
+  "correlation_id": "incident-2026-09-22-001",
   "value": 72.4,
   "timestamp": "2026-09-22T18:00:00+00:00"
 }
@@ -150,6 +153,12 @@ Every accepted or duplicate event response includes a deterministic SHA-256 even
 derived from its normalized source, metric, value, and UTC timestamp. The same event
 keeps the same ID across ingestion, export, and replay, which makes duplicate deliveries
 traceable without relying on process-local sequence numbers.
+
+Events may also include an optional `correlation_id` of up to 100 characters.
+It is normalized, included in deterministic identity and idempotency checks, and
+preserved through history, pagination, NDJSON export, and replay. Use the
+`correlation_id` query parameter on `/events/recent`, `/events/page`, or
+`/events/export` to follow one incident or distributed workflow across streams.
 
 Retrieve an accepted event directly while it remains in bounded history:
 

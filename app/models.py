@@ -6,10 +6,11 @@ from pydantic import BaseModel, Field, field_validator
 class TelemetryEvent(BaseModel):
     source: str = Field(min_length=1, max_length=100)
     metric: str = Field(min_length=1, max_length=100)
+    correlation_id: str | None = Field(default=None, min_length=1, max_length=100)
     value: float = Field(allow_inf_nan=False)
     timestamp: datetime
 
-    @field_validator("source", "metric", mode="before")
+    @field_validator("source", "metric", "correlation_id", mode="before")
     @classmethod
     def normalize_identifier(cls, value: object) -> object:
         if isinstance(value, str):
