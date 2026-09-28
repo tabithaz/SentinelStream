@@ -95,6 +95,8 @@ def test_source_aggregates_are_bounded_with_visible_overflow() -> None:
         "source_overflow_out_of_order": 0,
         "tracked_streams": 5,
         "stream_limit": 5000,
+        "idempotency_keys": 0,
+        "idempotency_limit": 5000,
     }
 
 

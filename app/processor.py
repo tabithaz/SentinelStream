@@ -1,5 +1,6 @@
 import hashlib
 import json
+from copy import deepcopy
 from collections import OrderedDict, defaultdict, deque
 from collections.abc import Mapping
 from datetime import datetime, timedelta
@@ -16,12 +17,17 @@ DEFAULT_THRESHOLDS: dict[str, tuple[float, float]] = {
 }
 
 
+class IdempotencyConflictError(ValueError):
+    """Raised when an idempotency key is reused for another event payload."""
+
+
 class EventProcessor:
     def __init__(
         self,
         thresholds: Mapping[str, tuple[float, float]] | None = None,
         history_size: int = 1000,
         deduplication_size: int = 5000,
+        idempotency_size: int = 5000,
         source_cardinality_limit: int = 1000,
         stream_cardinality_limit: int = 5000,
     ) -> None:
@@ -29,6 +35,8 @@ class EventProcessor:
             raise ValueError("history_size must be greater than zero")
         if deduplication_size <= 0:
             raise ValueError("deduplication_size must be greater than zero")
+        if idempotency_size <= 0:
+            raise ValueError("idempotency_size must be greater than zero")
         if source_cardinality_limit <= 0:
             raise ValueError("source_cardinality_limit must be greater than zero")
         if stream_cardinality_limit <= 0:
@@ -55,6 +63,8 @@ class EventProcessor:
         self._deduplication_size = deduplication_size
         self._event_keys: deque[tuple[str, str, float, str]] = deque()
         self._event_key_set: set[tuple[str, str, float, str]] = set()
+        self._idempotency_size = idempotency_size
+        self._idempotency_results: OrderedDict[str, tuple[tuple, dict]] = OrderedDict()
         self._lock = RLock()
 
     def process(self, event: TelemetryEvent) -> dict:
@@ -148,6 +158,36 @@ class EventProcessor:
             "out_of_order": out_of_order,
             "results": results,
         }
+
+    def process_idempotent(
+        self,
+        event: TelemetryEvent,
+        idempotency_key: str,
+    ) -> tuple[dict, bool]:
+        """Process one event once for a bounded producer idempotency key."""
+        fingerprint = (self._event_key(event),)
+        with self._lock:
+            replay = self._idempotency_replay(idempotency_key, fingerprint)
+            if replay is not None:
+                return replay, True
+            result = self.process(event)
+            self._remember_idempotency(idempotency_key, fingerprint, result)
+            return deepcopy(result), False
+
+    def process_many_idempotent(
+        self,
+        events: list[TelemetryEvent],
+        idempotency_key: str,
+    ) -> tuple[dict, bool]:
+        """Process one batch once for a bounded producer idempotency key."""
+        fingerprint = tuple(self._event_key(event) for event in events)
+        with self._lock:
+            replay = self._idempotency_replay(idempotency_key, fingerprint)
+            if replay is not None:
+                return replay, True
+            result = self.process_many(events)
+            self._remember_idempotency(idempotency_key, fingerprint, result)
+            return deepcopy(result), False
 
     def recent_events(
         self,
@@ -397,10 +437,34 @@ class EventProcessor:
                     "source_overflow_out_of_order": self._source_overflow_out_of_order,
                     "tracked_streams": len(self._latest_timestamps),
                     "stream_limit": self._stream_cardinality_limit,
+                    "idempotency_keys": len(self._idempotency_results),
+                    "idempotency_limit": self._idempotency_size,
                 },
                 "metrics": metrics,
                 "sources": sources,
             }
+
+    def _idempotency_replay(self, idempotency_key: str, fingerprint: tuple) -> dict | None:
+        record = self._idempotency_results.get(idempotency_key)
+        if record is None:
+            return None
+        recorded_fingerprint, result = record
+        if recorded_fingerprint != fingerprint:
+            raise IdempotencyConflictError(
+                "idempotency key was already used for a different event payload"
+            )
+        self._idempotency_results.move_to_end(idempotency_key)
+        return deepcopy(result)
+
+    def _remember_idempotency(
+        self,
+        idempotency_key: str,
+        fingerprint: tuple,
+        result: dict,
+    ) -> None:
+        if len(self._idempotency_results) == self._idempotency_size:
+            self._idempotency_results.popitem(last=False)
+        self._idempotency_results[idempotency_key] = (fingerprint, deepcopy(result))
 
     def _source_bucket(self, source: str) -> str | None:
         if source in self._source_counts:

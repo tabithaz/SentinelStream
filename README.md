@@ -7,6 +7,7 @@ The project focuses on the processing and observability layer that would sit beh
 ## Current capabilities
 
 - Validated single-event and batch ingestion
+- Bounded producer idempotency keys for safe single and batch retries
 - Rejection of non-finite readings and blank stream identifiers before state mutation
 - UTC timestamp normalization and out-of-order detection
 - Configurable metric thresholds and anomaly classification
@@ -105,6 +106,13 @@ curl -X POST http://127.0.0.1:8000/events/batch \
 curl http://127.0.0.1:8000/events/reliability
 curl http://127.0.0.1:8000/events/recovery
 ```
+
+Both ingestion endpoints accept an `Idempotency-Key` header. Retrying the same
+payload with the same key returns the original result with
+`Idempotency-Replayed: true` without incrementing duplicate counters or
+processing state again. Reusing a key for a different payload returns HTTP 409.
+The least-recently-used key window is capped at 5,000 entries and exposed in
+the cardinality section of `/events/stats`.
 
 ## API endpoints
 

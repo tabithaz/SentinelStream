@@ -12,6 +12,7 @@ from uuid import uuid4
 from fastapi import (
     Body,
     FastAPI,
+    Header,
     HTTPException,
     Path as PathParameter,
     Query,
@@ -25,7 +26,7 @@ from pydantic import ValidationError
 from app.bursts import analyze_event_bursts
 from app.capacity import summarize_backpressure
 from app.models import TelemetryEvent
-from app.processor import EventProcessor
+from app.processor import EventProcessor, IdempotencyConflictError
 from app.prometheus import render_prometheus_metrics
 from app.recovery import recommend_recovery
 from app.reliability import classify_stream_reliability
@@ -119,8 +120,28 @@ def prometheus_metrics() -> Response:
 
 
 @app.post("/events")
-def process_event(event: TelemetryEvent) -> dict:
-    return processor.process(event)
+def process_event(
+    event: TelemetryEvent,
+    idempotency_key: Annotated[
+        str | None,
+        Header(
+            alias="Idempotency-Key",
+            min_length=1,
+            max_length=128,
+            pattern=r"^[A-Za-z0-9._:-]+$",
+        ),
+    ] = None,
+) -> Response:
+    if idempotency_key is None:
+        return JSONResponse(content=processor.process(event))
+    try:
+        result, replayed = processor.process_idempotent(event, idempotency_key)
+    except IdempotencyConflictError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    return JSONResponse(
+        content=result,
+        headers={"Idempotency-Replayed": str(replayed).lower()},
+    )
 
 
 @app.post("/events/batch")
@@ -129,8 +150,26 @@ def process_event_batch(
         list[TelemetryEvent],
         Body(min_length=1, max_length=1000),
     ],
-) -> dict:
-    return processor.process_many(events)
+    idempotency_key: Annotated[
+        str | None,
+        Header(
+            alias="Idempotency-Key",
+            min_length=1,
+            max_length=128,
+            pattern=r"^[A-Za-z0-9._:-]+$",
+        ),
+    ] = None,
+) -> Response:
+    if idempotency_key is None:
+        return JSONResponse(content=processor.process_many(events))
+    try:
+        result, replayed = processor.process_many_idempotent(events, idempotency_key)
+    except IdempotencyConflictError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    return JSONResponse(
+        content=result,
+        headers={"Idempotency-Replayed": str(replayed).lower()},
+    )
 
 
 @app.post("/events/replay")
