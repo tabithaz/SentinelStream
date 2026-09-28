@@ -14,6 +14,7 @@ The project focuses on the processing and observability layer that would sit beh
 - Bounded event history and duplicate-delivery suppression
 - Deterministic event IDs for tracing accepted events and duplicate deliveries
 - Direct event lookup by ID within the bounded retention window
+- Bounded event-context windows for incident investigation
 - Cursor-based pagination through retained event history
 - Bounded source aggregates and LRU stream-ordering state for cardinality safety
 - Filtered NDJSON event export for incident analysis and replay pipelines
@@ -127,6 +128,7 @@ the cardinality section of `/events/stats`.
 | `GET` | `/events/recent` | Query bounded recent history |
 | `GET` | `/events/page` | Traverse retained history with a stable event-ID cursor |
 | `GET` | `/events/id/{event_id}` | Retrieve one retained event by its deterministic ID |
+| `GET` | `/events/id/{event_id}/context` | Inspect events around one retained event |
 | `GET` | `/events/export` | Export filtered recent history as NDJSON |
 | `GET` | `/events/stats` | Inspect processing, anomaly, duplicate, and ordering totals |
 | `GET` | `/events/sources` | Rank source health |
@@ -156,6 +158,17 @@ curl http://127.0.0.1:8000/events/id/16669d45081d7a7a4907b54a8c1fbc60872385426f3
 ```
 
 Malformed IDs return HTTP 422 and valid IDs outside the retained history return HTTP 404.
+
+Investigate the events surrounding a retained event with a chronological context window:
+
+```bash
+curl "http://127.0.0.1:8000/events/id/16669d45081d7a7a4907b54a8c1fbc60872385426f3e6991fa462824b255566a/context?before=10&after=10&same_stream=true"
+```
+
+The `before` and `after` windows are independently bounded to 100 events. Set
+`same_stream=true` to include only events with the target's source and metric.
+`has_more_before` and `has_more_after` indicate when additional matching history
+exists outside the requested window.
 
 For incremental incident tooling, `GET /events/page?limit=100` returns events
 newest-first with `has_more` and a stable `next_cursor`. Pass that cursor into

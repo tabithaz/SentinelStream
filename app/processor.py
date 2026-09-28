@@ -234,6 +234,51 @@ class EventProcessor:
                     return item.copy()
         return None
 
+    def event_context(
+        self,
+        event_id: str,
+        before: int = 5,
+        after: int = 5,
+        same_stream: bool = False,
+    ) -> dict | None:
+        """Return a chronological window around one retained event."""
+        if before < 0 or after < 0:
+            raise ValueError("context window sizes cannot be negative")
+
+        with self._lock:
+            history = [item.copy() for item in self._recent_events]
+
+        target = next(
+            (item for item in history if item["event_id"] == event_id),
+            None,
+        )
+        if target is None:
+            return None
+
+        if same_stream:
+            history = [
+                item
+                for item in history
+                if item["source"] == target["source"]
+                and item["metric"].lower() == target["metric"].lower()
+            ]
+
+        target_index = next(
+            index
+            for index, item in enumerate(history)
+            if item["event_id"] == event_id
+        )
+        start = max(0, target_index - before)
+        end = min(len(history), target_index + after + 1)
+        return {
+            "event": target,
+            "before": history[start:target_index],
+            "after": history[target_index + 1 : end],
+            "same_stream": same_stream,
+            "has_more_before": start > 0,
+            "has_more_after": end < len(history),
+        }
+
     def event_page(
         self,
         limit: int = 100,

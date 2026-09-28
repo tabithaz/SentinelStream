@@ -246,6 +246,24 @@ def event_by_id(
     return event
 
 
+@app.get("/events/id/{event_id}/context")
+def event_context(
+    event_id: Annotated[str, PathParameter(pattern=r"^[0-9a-f]{64}$")],
+    before: int = Query(default=5, ge=0, le=100),
+    after: int = Query(default=5, ge=0, le=100),
+    same_stream: bool = False,
+) -> dict:
+    context = processor.event_context(
+        event_id,
+        before=before,
+        after=after,
+        same_stream=same_stream,
+    )
+    if context is None:
+        raise HTTPException(status_code=404, detail="event not found in retained history")
+    return context
+
+
 @app.get("/events/page")
 def paginated_events(
     limit: int = Query(default=100, ge=1, le=1000),
