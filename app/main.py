@@ -1,8 +1,10 @@
 from dataclasses import asdict
 from datetime import datetime, timezone
+import hmac
 import json
 import logging
 import math
+import os
 from pathlib import Path
 import re
 import time
@@ -31,13 +33,28 @@ from app.prometheus import render_prometheus_metrics
 from app.recovery import recommend_recovery
 from app.reliability import classify_stream_reliability
 
-app = FastAPI(title="SentinelStream", version="1.0.0")
+app = FastAPI(title="SentinelStream", version="1.1.0")
 processor = EventProcessor()
 DASHBOARD_PATH = Path(__file__).parent / "static" / "dashboard.html"
 LOGGER = logging.getLogger("sentinelstream.access")
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
 MAX_REPLAY_BYTES = 1024 * 1024
 MAX_REPLAY_EVENTS = 1000
+
+
+@app.middleware("http")
+async def protect_event_writes(request: Request, call_next):
+    """Require an API key for event mutation when one is configured."""
+    expected_key = os.getenv("SENTINELSTREAM_API_KEY", "")
+    if expected_key and request.method == "POST" and request.url.path.startswith("/events"):
+        supplied_key = request.headers.get("X-API-Key", "")
+        if not supplied_key or not hmac.compare_digest(supplied_key, expected_key):
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "valid X-API-Key required"},
+                headers={"WWW-Authenticate": "ApiKey"},
+            )
+    return await call_next(request)
 
 
 @app.middleware("http")

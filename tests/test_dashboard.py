@@ -13,6 +13,7 @@ def test_dashboard_is_served() -> None:
     assert "SentinelStream Operations" in response.text
     assert 'id="event-form"' in response.text
     assert 'id="correlation-id"' in response.text
+    assert 'id="api-key"' in response.text
     assert 'id="incident-form"' in response.text
     assert "Incident explorer" in response.text
 
@@ -26,3 +27,4 @@ def test_dashboard_integrates_with_operational_endpoints() -> None:
     assert "fetch('/events/recent?limit=12')" in response.text
     assert "fetch(`/events/correlations/${encodeURIComponent(correlationId)}`)" in response.text
     assert "payload.correlation_id=correlationId" in response.text
+    assert "headers['X-API-Key']=apiKey" in response.text

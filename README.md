@@ -8,6 +8,7 @@ The project focuses on the processing and observability layer that would sit beh
 
 - Validated single-event and batch ingestion
 - Bounded producer idempotency keys for safe single and batch retries
+- Optional constant-time API-key authentication for event ingestion
 - Rejection of non-finite readings and blank stream identifiers before state mutation
 - UTC timestamp normalization and out-of-order detection
 - Configurable metric thresholds and anomaly classification
@@ -50,6 +51,21 @@ uvicorn app.main:app --reload
 ```
 
 The dashboard is available at `http://127.0.0.1:8000/dashboard`. It can submit correlated telemetry, display correlation IDs in recent events, and inspect incident health across sources and metrics. The API is available at `http://127.0.0.1:8000`, with interactive documentation at `http://127.0.0.1:8000/docs`.
+
+Set `SENTINELSTREAM_API_KEY` to protect every event-writing endpoint. Clients
+must then send the configured secret in the `X-API-Key` header. Key comparison
+uses constant-time verification, rejected requests cannot mutate stream state,
+and read-only analytics, health, metrics, documentation, and the dashboard
+remain available. The dashboard's optional API-key field sends the header for
+interactive ingestion without storing the secret.
+
+```bash
+export SENTINELSTREAM_API_KEY="replace-with-a-secret"
+curl -X POST http://127.0.0.1:8000/events \
+  -H "X-API-Key: $SENTINELSTREAM_API_KEY" \
+  -H "Content-Type: application/json" \
+  --data @event.json
+```
 
 ## Run with Docker
 
