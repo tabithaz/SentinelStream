@@ -14,6 +14,7 @@ The project focuses on the processing and observability layer that would sit beh
 - Bounded event history and duplicate-delivery suppression
 - Deterministic event IDs for tracing accepted events and duplicate deliveries
 - End-to-end correlation IDs for distributed incident tracing
+- Correlated incident summaries across sources, metrics, anomalies, and ordering faults
 - Direct event lookup by ID within the bounded retention window
 - Bounded event-context windows for incident investigation
 - Cursor-based pagination through retained event history
@@ -132,6 +133,7 @@ the cardinality section of `/events/stats`.
 | `GET` | `/events/page` | Traverse retained history with a stable event-ID cursor |
 | `GET` | `/events/id/{event_id}` | Retrieve one retained event by its deterministic ID |
 | `GET` | `/events/id/{event_id}/context` | Inspect events around one retained event |
+| `GET` | `/events/correlations/{correlation_id}` | Summarize one correlated incident or workflow |
 | `GET` | `/events/export` | Export filtered recent history as NDJSON |
 | `GET` | `/events/stats` | Inspect processing, anomaly, duplicate, and ordering totals |
 | `GET` | `/events/sources` | Rank source health |
@@ -159,6 +161,17 @@ It is normalized, included in deterministic identity and idempotency checks, and
 preserved through history, pagination, NDJSON export, and replay. Use the
 `correlation_id` query parameter on `/events/recent`, `/events/page`, or
 `/events/export` to follow one incident or distributed workflow across streams.
+
+Summarize the retained portion of a correlated incident without exporting and
+aggregating its events manually:
+
+```bash
+curl http://127.0.0.1:8000/events/correlations/incident-2026-09-22-001
+```
+
+The response reports overall health, event and anomaly counts, ordering faults,
+affected sources and metrics, the first and last timestamps, and incident
+duration. Unknown correlations return HTTP 404.
 
 Retrieve an accepted event directly while it remains in bounded history:
 

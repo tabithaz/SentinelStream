@@ -287,6 +287,49 @@ class EventProcessor:
             "has_more_after": end < len(history),
         }
 
+    def correlation_summary(self, correlation_id: str) -> dict | None:
+        """Summarize one correlated workflow within bounded event history."""
+        with self._lock:
+            events = [
+                item.copy()
+                for item in self._recent_events
+                if item.get("correlation_id") == correlation_id
+            ]
+
+        if not events:
+            return None
+
+        timestamps = [datetime.fromisoformat(item["timestamp"]) for item in events]
+        first_timestamp = min(timestamps)
+        last_timestamp = max(timestamps)
+        event_count = len(events)
+        anomaly_count = sum(1 for item in events if item["anomaly"])
+        out_of_order_count = sum(1 for item in events if item["out_of_order"])
+        anomaly_rate = anomaly_count / event_count
+        out_of_order_rate = out_of_order_count / event_count
+        health_priority = {"healthy": 0, "watch": 1, "critical": 2}
+        anomaly_health = self._source_health(anomaly_rate)
+        ordering_health = self._ordering_health(out_of_order_rate)
+        health = max(
+            (anomaly_health, ordering_health),
+            key=health_priority.__getitem__,
+        )
+
+        return {
+            "correlation_id": correlation_id,
+            "health": health,
+            "event_count": event_count,
+            "anomaly_count": anomaly_count,
+            "anomaly_rate": anomaly_rate,
+            "out_of_order_count": out_of_order_count,
+            "out_of_order_rate": out_of_order_rate,
+            "sources": sorted({item["source"] for item in events}),
+            "metrics": sorted({item["metric"].lower() for item in events}),
+            "first_timestamp": first_timestamp.isoformat(),
+            "last_timestamp": last_timestamp.isoformat(),
+            "duration_seconds": (last_timestamp - first_timestamp).total_seconds(),
+        }
+
     def event_page(
         self,
         limit: int = 100,

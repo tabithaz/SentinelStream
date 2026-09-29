@@ -74,3 +74,63 @@ def test_correlation_id_survives_export_and_replay_and_rejects_invalid_values() 
     assert client.post("/events", json=event(1, "   ")).status_code == 422
     assert client.post("/events", json=event(1, "x" * 101)).status_code == 422
     assert client.get("/events/recent", params={"correlation_id": "   "}).status_code == 422
+
+
+def test_correlation_summary_spans_streams_and_classifies_health() -> None:
+    events = [
+        event(0, " incident-42 "),
+        {
+            **event(1, "incident-42"),
+            "source": "sensor-beta",
+            "metric": "pressure",
+            "value": 300.0,
+        },
+        event(3, "incident-42"),
+        event(2, "incident-42"),
+        {**event(4, "incident-42"), "source": "sensor-beta"},
+    ]
+    for payload in events:
+        assert client.post("/events", json=payload).status_code == 200
+    client.post("/events", json=event(3, "incident-other"))
+
+    response = client.get("/events/correlations/incident-42")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "correlation_id": "incident-42",
+        "health": "watch",
+        "event_count": 5,
+        "anomaly_count": 1,
+        "anomaly_rate": 0.2,
+        "out_of_order_count": 1,
+        "out_of_order_rate": 0.2,
+        "sources": ["sensor-alpha", "sensor-beta"],
+        "metrics": ["pressure", "temperature"],
+        "first_timestamp": "2026-09-28T17:00:00+00:00",
+        "last_timestamp": "2026-09-28T17:04:00+00:00",
+        "duration_seconds": 240.0,
+    }
+
+
+def test_correlation_summary_reports_critical_health() -> None:
+    payload = event(0, "incident-critical")
+    payload["value"] = 200.0
+    client.post("/events", json=payload)
+
+    response = client.get("/events/correlations/incident-critical")
+
+    assert response.status_code == 200
+    assert response.json()["health"] == "critical"
+    assert response.json()["duration_seconds"] == 0.0
+
+
+def test_correlation_summary_validates_and_requires_retained_events() -> None:
+    missing = client.get("/events/correlations/missing")
+    blank = client.get("/events/correlations/%20%20%20")
+    too_long = client.get(f"/events/correlations/{'x' * 101}")
+
+    assert missing.status_code == 404
+    assert missing.json()["detail"] == "correlation not found in retained history"
+    assert blank.status_code == 422
+    assert blank.json()["detail"] == "correlation_id must not be blank"
+    assert too_long.status_code == 422
