@@ -49,7 +49,7 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-The dashboard is available at `http://127.0.0.1:8000/dashboard`. The API is available at `http://127.0.0.1:8000`, with interactive documentation at `http://127.0.0.1:8000/docs`.
+The dashboard is available at `http://127.0.0.1:8000/dashboard`. It can submit correlated telemetry, display correlation IDs in recent events, and inspect incident health across sources and metrics. The API is available at `http://127.0.0.1:8000`, with interactive documentation at `http://127.0.0.1:8000/docs`.
 
 ## Run with Docker
 
