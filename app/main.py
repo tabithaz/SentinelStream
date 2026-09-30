@@ -42,6 +42,7 @@ LOGGER = logging.getLogger("sentinelstream.access")
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
 MAX_REPLAY_BYTES = 1024 * 1024
 MAX_REPLAY_EVENTS = 1000
+DEFAULT_MAX_INGESTION_BYTES = 1024 * 1024
 ingestion_rate_limiter = SlidingWindowRateLimiter()
 
 
@@ -52,6 +53,18 @@ def _ingestion_rate_limit() -> int:
     except ValueError:
         return 0
     return max(0, limit)
+
+
+def _max_ingestion_bytes() -> int:
+    configured = os.getenv(
+        "SENTINELSTREAM_MAX_INGESTION_BYTES",
+        str(DEFAULT_MAX_INGESTION_BYTES),
+    )
+    try:
+        maximum = int(configured)
+    except ValueError:
+        return DEFAULT_MAX_INGESTION_BYTES
+    return maximum if maximum > 0 else DEFAULT_MAX_INGESTION_BYTES
 
 
 def _rate_limit_identity(request: Request) -> str:
@@ -106,6 +119,36 @@ async def limit_event_ingestion(request: Request, call_next):
     response = await call_next(request)
     response.headers.update(headers)
     return response
+
+
+@app.middleware("http")
+async def limit_ingestion_payloads(request: Request, call_next):
+    """Reject oversized event writes before request parsing or state mutation."""
+    is_event_write = request.method == "POST" and request.url.path.startswith("/events")
+    if not is_event_write:
+        return await call_next(request)
+
+    maximum = _max_ingestion_bytes()
+    declared_length = request.headers.get("content-length")
+    if declared_length is not None:
+        try:
+            if int(declared_length) > maximum:
+                return JSONResponse(
+                    status_code=413,
+                    content={"detail": "event payload exceeds configured byte limit"},
+                    headers={"X-Max-Request-Bytes": str(maximum)},
+                )
+        except ValueError:
+            pass
+
+    body = await request.body()
+    if len(body) > maximum:
+        return JSONResponse(
+            status_code=413,
+            content={"detail": "event payload exceeds configured byte limit"},
+            headers={"X-Max-Request-Bytes": str(maximum)},
+        )
+    return await call_next(request)
 
 
 @app.middleware("http")

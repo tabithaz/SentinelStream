@@ -10,6 +10,7 @@ The project focuses on the processing and observability layer that would sit beh
 - Bounded producer idempotency keys for safe single and batch retries
 - Optional constant-time API-key authentication for event ingestion
 - Optional bounded per-client ingestion rate limiting with retry guidance
+- Configurable request-body limits for ingestion resource protection
 - Rejection of non-finite readings and blank stream identifiers before state mutation
 - UTC timestamp normalization and out-of-order detection
 - Configurable metric thresholds and anomaly classification
@@ -80,6 +81,12 @@ limit is disabled by default.
 docker run --rm -p 8000:8000 \
   -e SENTINELSTREAM_INGEST_RATE_LIMIT=120 sentinelstream-api
 ```
+
+Event-writing request bodies are capped at 1 MiB by default, before JSON or
+NDJSON parsing. Set `SENTINELSTREAM_MAX_INGESTION_BYTES` to a positive byte
+limit when a deployment needs a different ceiling. Oversized requests receive
+HTTP 413 and `X-Max-Request-Bytes`; rejected payloads cannot mutate stream state.
+The replay endpoint keeps its existing 1 MiB ceiling when the general limit is raised.
 
 ## Run with Docker
 
