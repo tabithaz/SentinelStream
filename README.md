@@ -9,6 +9,7 @@ The project focuses on the processing and observability layer that would sit beh
 - Validated single-event and batch ingestion
 - Bounded producer idempotency keys for safe single and batch retries
 - Optional constant-time API-key authentication for event ingestion
+- Optional bounded per-client ingestion rate limiting with retry guidance
 - Rejection of non-finite readings and blank stream identifiers before state mutation
 - UTC timestamp normalization and out-of-order detection
 - Configurable metric thresholds and anomaly classification
@@ -65,6 +66,18 @@ curl -X POST http://127.0.0.1:8000/events \
   -H "X-API-Key: $SENTINELSTREAM_API_KEY" \
   -H "Content-Type: application/json" \
   --data @event.json
+```
+
+Set `SENTINELSTREAM_INGEST_RATE_LIMIT` to a positive integer to cap event-writing
+requests per client or API key in a rolling 60-second window. Exceeded clients
+receive HTTP 429 with `Retry-After`, `X-RateLimit-Limit`, and
+`X-RateLimit-Remaining` headers. Client tracking is bounded to 10,000 identities
+to prevent the protection layer from introducing unbounded memory growth. The
+limit is disabled by default.
+
+```bash
+docker run --rm -p 8000:8000 \
+  -e SENTINELSTREAM_INGEST_RATE_LIMIT=120 sentinelstream-api
 ```
 
 ## Run with Docker

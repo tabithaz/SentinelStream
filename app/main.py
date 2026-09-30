@@ -1,5 +1,6 @@
 from dataclasses import asdict
 from datetime import datetime, timezone
+import hashlib
 import hmac
 import json
 import logging
@@ -30,6 +31,7 @@ from app.capacity import summarize_backpressure
 from app.models import TelemetryEvent
 from app.processor import EventProcessor, IdempotencyConflictError
 from app.prometheus import render_prometheus_metrics
+from app.rate_limit import SlidingWindowRateLimiter
 from app.recovery import recommend_recovery
 from app.reliability import classify_stream_reliability
 
@@ -40,6 +42,25 @@ LOGGER = logging.getLogger("sentinelstream.access")
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
 MAX_REPLAY_BYTES = 1024 * 1024
 MAX_REPLAY_EVENTS = 1000
+ingestion_rate_limiter = SlidingWindowRateLimiter()
+
+
+def _ingestion_rate_limit() -> int:
+    configured = os.getenv("SENTINELSTREAM_INGEST_RATE_LIMIT", "0")
+    try:
+        limit = int(configured)
+    except ValueError:
+        return 0
+    return max(0, limit)
+
+
+def _rate_limit_identity(request: Request) -> str:
+    api_key = request.headers.get("X-API-Key")
+    if api_key:
+        digest = hashlib.sha256(api_key.encode("utf-8")).hexdigest()
+        return f"api-key:{digest}"
+    host = request.client.host if request.client is not None else "unknown"
+    return f"client:{host}"
 
 
 @app.middleware("http")
@@ -55,6 +76,36 @@ async def protect_event_writes(request: Request, call_next):
                 headers={"WWW-Authenticate": "ApiKey"},
             )
     return await call_next(request)
+
+
+@app.middleware("http")
+async def limit_event_ingestion(request: Request, call_next):
+    """Apply an optional per-client sliding-window limit to event writes."""
+    limit = _ingestion_rate_limit()
+    is_event_write = request.method == "POST" and request.url.path.startswith("/events")
+    if not limit or not is_event_write:
+        return await call_next(request)
+
+    decision = ingestion_rate_limiter.check(
+        _rate_limit_identity(request),
+        limit,
+        time.monotonic(),
+    )
+    headers = {
+        "X-RateLimit-Limit": str(limit),
+        "X-RateLimit-Remaining": str(decision.remaining),
+    }
+    if not decision.allowed:
+        headers["Retry-After"] = str(decision.retry_after_seconds)
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "event ingestion rate limit exceeded"},
+            headers=headers,
+        )
+
+    response = await call_next(request)
+    response.headers.update(headers)
+    return response
 
 
 @app.middleware("http")
