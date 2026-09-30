@@ -134,3 +134,97 @@ def test_correlation_summary_validates_and_requires_retained_events() -> None:
     assert blank.status_code == 422
     assert blank.json()["detail"] == "correlation_id must not be blank"
     assert too_long.status_code == 422
+
+
+def test_correlation_fault_analysis_reconstructs_cross_stream_propagation() -> None:
+    payloads = [
+        event(0, "incident-analysis"),
+        {
+            **event(1, "incident-analysis"),
+            "source": "sensor-beta",
+            "metric": "pressure",
+            "value": 300.0,
+        },
+        event(3, "incident-analysis"),
+        event(2, "incident-analysis"),
+        {**event(4, "incident-analysis"), "source": "sensor-beta"},
+    ]
+    results = [client.post("/events", json=payload).json() for payload in payloads]
+
+    response = client.get("/events/correlations/incident-analysis/analysis")
+
+    assert response.status_code == 200
+    analysis = response.json()
+    assert analysis["status"] == "faults_detected"
+    assert analysis["event_count"] == 5
+    assert analysis["fault_count"] == 2
+    assert analysis["affected_stream_count"] == 2
+    assert analysis["suspected_origin"] == {
+        "sequence": 2,
+        "event_id": results[1]["event_id"],
+        "source": "sensor-beta",
+        "metric": "pressure",
+        "timestamp": "2026-09-28T17:01:00+00:00",
+        "signals": ["anomaly"],
+    }
+    assert analysis["fault_timeline"][1] == {
+        "sequence": 4,
+        "event_id": results[3]["event_id"],
+        "source": "sensor-alpha",
+        "metric": "temperature",
+        "timestamp": "2026-09-28T17:02:00+00:00",
+        "signals": ["out_of_order"],
+    }
+    assert analysis["streams"] == [
+        {
+            "source": "sensor-beta",
+            "metric": "pressure",
+            "event_count": 1,
+            "anomaly_count": 1,
+            "ordering_fault_count": 0,
+            "first_fault_sequence": 2,
+        },
+        {
+            "source": "sensor-alpha",
+            "metric": "temperature",
+            "event_count": 3,
+            "anomaly_count": 0,
+            "ordering_fault_count": 1,
+            "first_fault_sequence": 4,
+        },
+        {
+            "source": "sensor-beta",
+            "metric": "temperature",
+            "event_count": 1,
+            "anomaly_count": 0,
+            "ordering_fault_count": 0,
+            "first_fault_sequence": None,
+        },
+    ]
+
+
+def test_correlation_fault_analysis_reports_healthy_incident() -> None:
+    client.post("/events", json=event(0, "incident-healthy"))
+    client.post("/events", json=event(1, "incident-healthy"))
+
+    analysis = client.get("/events/correlations/incident-healthy/analysis").json()
+
+    assert analysis["status"] == "healthy"
+    assert analysis["fault_count"] == 0
+    assert analysis["affected_stream_count"] == 0
+    assert analysis["suspected_origin"] is None
+    assert analysis["fault_timeline"] == []
+
+
+def test_correlation_fault_analysis_normalizes_and_requires_history() -> None:
+    client.post("/events", json=event(0, "incident-normalized"))
+
+    normalized = client.get(
+        "/events/correlations/%20incident-normalized%20/analysis"
+    )
+    missing = client.get("/events/correlations/missing/analysis")
+
+    assert normalized.status_code == 200
+    assert normalized.json()["correlation_id"] == "incident-normalized"
+    assert missing.status_code == 404
+    assert missing.json()["detail"] == "correlation not found in retained history"

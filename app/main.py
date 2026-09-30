@@ -361,6 +361,23 @@ def correlation_summary(
     return summary
 
 
+@app.get("/events/correlations/{correlation_id}/analysis")
+def correlation_fault_analysis(
+    correlation_id: Annotated[
+        str,
+        PathParameter(min_length=1, max_length=100),
+    ],
+) -> dict:
+    normalized = _normalize_correlation_filter(correlation_id)
+    analysis = processor.correlation_fault_analysis(normalized)
+    if analysis is None:
+        raise HTTPException(
+            status_code=404,
+            detail="correlation not found in retained history",
+        )
+    return analysis
+
+
 @app.get("/events/page")
 def paginated_events(
     limit: int = Query(default=100, ge=1, le=1000),

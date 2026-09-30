@@ -330,6 +330,81 @@ class EventProcessor:
             "duration_seconds": (last_timestamp - first_timestamp).total_seconds(),
         }
 
+    def correlation_fault_analysis(self, correlation_id: str) -> dict | None:
+        """Reconstruct observed fault propagation for one retained correlation."""
+        with self._lock:
+            events = [
+                item.copy()
+                for item in self._recent_events
+                if item.get("correlation_id") == correlation_id
+            ]
+
+        if not events:
+            return None
+
+        streams: dict[tuple[str, str], dict] = {}
+        fault_timeline: list[dict] = []
+        for sequence, event in enumerate(events, start=1):
+            stream_key = (event["source"], event["metric"].lower())
+            stream = streams.setdefault(
+                stream_key,
+                {
+                    "source": event["source"],
+                    "metric": event["metric"].lower(),
+                    "event_count": 0,
+                    "anomaly_count": 0,
+                    "ordering_fault_count": 0,
+                    "first_fault_sequence": None,
+                },
+            )
+            stream["event_count"] += 1
+            stream["anomaly_count"] += int(event["anomaly"])
+            stream["ordering_fault_count"] += int(event["out_of_order"])
+
+            signals = []
+            if event["anomaly"]:
+                signals.append("anomaly")
+            if event["out_of_order"]:
+                signals.append("out_of_order")
+            if not signals:
+                continue
+
+            if stream["first_fault_sequence"] is None:
+                stream["first_fault_sequence"] = sequence
+            fault_timeline.append(
+                {
+                    "sequence": sequence,
+                    "event_id": event["event_id"],
+                    "source": event["source"],
+                    "metric": event["metric"],
+                    "timestamp": event["timestamp"],
+                    "signals": signals,
+                }
+            )
+
+        stream_summaries = list(streams.values())
+        stream_summaries.sort(
+            key=lambda stream: (
+                stream["first_fault_sequence"] is None,
+                stream["first_fault_sequence"] or 0,
+                stream["source"].casefold(),
+                stream["metric"],
+            )
+        )
+        return {
+            "correlation_id": correlation_id,
+            "status": "faults_detected" if fault_timeline else "healthy",
+            "event_count": len(events),
+            "fault_count": len(fault_timeline),
+            "affected_stream_count": sum(
+                stream["first_fault_sequence"] is not None
+                for stream in stream_summaries
+            ),
+            "suspected_origin": fault_timeline[0] if fault_timeline else None,
+            "fault_timeline": fault_timeline,
+            "streams": stream_summaries,
+        }
+
     def event_page(
         self,
         limit: int = 100,
