@@ -14,6 +14,7 @@ The project focuses on the processing and observability layer that would sit beh
 - Rejection of non-finite readings and blank stream identifiers before state mutation
 - UTC timestamp normalization and out-of-order detection
 - Configurable metric thresholds and anomaly classification
+- Versioned runtime threshold updates with optimistic concurrency control
 - Bounded event history and duplicate-delivery suppression
 - Deterministic event IDs for tracing accepted events and duplicate deliveries
 - End-to-end correlation IDs for distributed incident tracing
@@ -176,6 +177,8 @@ the cardinality section of `/events/stats`.
 | `GET` | `/events/stats` | Inspect processing, anomaly, duplicate, and ordering totals |
 | `GET` | `/events/sources` | Rank source health |
 | `GET` | `/events/metrics` | Rank metric health |
+| `GET` | `/events/thresholds` | Read active anomaly thresholds and version |
+| `PUT` | `/events/thresholds` | Atomically replace thresholds using `If-Match` |
 | `GET` | `/events/throughput` | Analyze recent throughput windows |
 | `GET` | `/events/bursts` | Detect bursty arrival windows |
 | `GET` | `/events/backpressure` | Model queue capacity and overload |
@@ -188,6 +191,20 @@ Query parameters are validated by FastAPI. Recent-history and batch sizes are bo
 Event values must be finite JSON numbers. Source and metric identifiers are trimmed,
 limited to 100 characters, and rejected when blank; an invalid batch is rejected
 before any event in that request changes processor state.
+
+Anomaly thresholds can be updated without restarting the service. Read the
+current configuration and its `ETag`, then send that value in `If-Match` when
+replacing the complete threshold set. A concurrent update returns HTTP 412
+instead of silently overwriting newer policy. When API-key protection is
+configured, threshold writes require the same `X-API-Key` used for ingestion.
+
+```bash
+etag=$(curl -sD - http://127.0.0.1:8000/events/thresholds -o /dev/null \
+  | awk 'tolower($1) == "etag:" {print $2}' | tr -d '\r')
+curl -X PUT http://127.0.0.1:8000/events/thresholds \
+  -H "Content-Type: application/json" -H "If-Match: $etag" \
+  -d '{"thresholds":{"temperature":{"minimum":-50,"maximum":100}}}'
+```
 
 Every accepted or duplicate event response includes a deterministic SHA-256 event ID
 derived from its normalized source, metric, value, and UTC timestamp. The same event

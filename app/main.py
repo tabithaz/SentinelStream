@@ -28,8 +28,12 @@ from pydantic import ValidationError
 
 from app.bursts import analyze_event_bursts
 from app.capacity import summarize_backpressure
-from app.models import TelemetryEvent
-from app.processor import EventProcessor, IdempotencyConflictError
+from app.models import TelemetryEvent, ThresholdConfiguration
+from app.processor import (
+    EventProcessor,
+    IdempotencyConflictError,
+    ThresholdVersionConflictError,
+)
 from app.prometheus import render_prometheus_metrics
 from app.rate_limit import SlidingWindowRateLimiter
 from app.recovery import recommend_recovery
@@ -80,7 +84,8 @@ def _rate_limit_identity(request: Request) -> str:
 async def protect_event_writes(request: Request, call_next):
     """Require an API key for event mutation when one is configured."""
     expected_key = os.getenv("SENTINELSTREAM_API_KEY", "")
-    if expected_key and request.method == "POST" and request.url.path.startswith("/events"):
+    is_event_write = request.method in {"POST", "PUT", "PATCH", "DELETE"}
+    if expected_key and is_event_write and request.url.path.startswith("/events"):
         supplied_key = request.headers.get("X-API-Key", "")
         if not supplied_key or not hmac.compare_digest(supplied_key, expected_key):
             return JSONResponse(
@@ -204,6 +209,8 @@ def _normalize_correlation_filter(correlation_id: str | None) -> str | None:
 
 
 def _json_safe(value: object) -> object:
+    if isinstance(value, BaseException):
+        return str(value)
     if isinstance(value, float) and not math.isfinite(value):
         return str(value)
     if isinstance(value, dict):
@@ -555,6 +562,50 @@ def ranked_metrics(
     limit: int = Query(default=10, ge=1, le=100),
 ) -> list[dict]:
     return processor.ranked_metrics(limit=limit)
+
+
+@app.get("/events/thresholds")
+def anomaly_thresholds() -> JSONResponse:
+    configuration = processor.threshold_configuration()
+    return JSONResponse(
+        content=configuration,
+        headers={"ETag": f'"{configuration["version"]}"'},
+    )
+
+
+@app.put("/events/thresholds")
+def replace_anomaly_thresholds(
+    configuration: ThresholdConfiguration,
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+) -> JSONResponse:
+    if if_match is None:
+        raise HTTPException(
+            status_code=428,
+            detail="If-Match with the current threshold version is required",
+        )
+    match = re.fullmatch(r'"([1-9][0-9]*)"', if_match)
+    if match is None:
+        raise HTTPException(
+            status_code=400,
+            detail='If-Match must be a quoted positive threshold version, such as "1"',
+        )
+
+    thresholds = {
+        metric: (bounds.minimum, bounds.maximum)
+        for metric, bounds in configuration.thresholds.items()
+    }
+    try:
+        updated = processor.replace_thresholds(thresholds, int(match.group(1)))
+    except ThresholdVersionConflictError as error:
+        return JSONResponse(
+            status_code=412,
+            content={"detail": str(error), "current_version": error.current_version},
+            headers={"ETag": f'"{error.current_version}"'},
+        )
+    return JSONResponse(
+        content=updated,
+        headers={"ETag": f'"{updated["version"]}"'},
+    )
 
 
 @app.get("/events/health-summary")

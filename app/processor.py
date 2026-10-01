@@ -21,6 +21,14 @@ class IdempotencyConflictError(ValueError):
     """Raised when an idempotency key is reused for another event payload."""
 
 
+class ThresholdVersionConflictError(ValueError):
+    """Raised when a threshold update targets a stale configuration version."""
+
+    def __init__(self, current_version: int) -> None:
+        super().__init__("threshold configuration changed; fetch the latest version")
+        self.current_version = current_version
+
+
 class EventProcessor:
     def __init__(
         self,
@@ -44,6 +52,7 @@ class EventProcessor:
 
         configured = thresholds if thresholds is not None else DEFAULT_THRESHOLDS
         self._thresholds = self._normalize_thresholds(configured)
+        self._threshold_version = 1
         self._processed = 0
         self._anomalies = 0
         self._duplicates = 0
@@ -193,6 +202,31 @@ class EventProcessor:
             result = self.process_many(events)
             self._remember_idempotency(idempotency_key, fingerprint, result)
             return deepcopy(result), False
+
+    def threshold_configuration(self) -> dict:
+        """Return a stable snapshot of the active anomaly thresholds."""
+        with self._lock:
+            return {
+                "version": self._threshold_version,
+                "thresholds": {
+                    metric: {"minimum": bounds[0], "maximum": bounds[1]}
+                    for metric, bounds in sorted(self._thresholds.items())
+                },
+            }
+
+    def replace_thresholds(
+        self,
+        thresholds: Mapping[str, tuple[float, float]],
+        expected_version: int,
+    ) -> dict:
+        """Atomically replace thresholds when the caller has the current version."""
+        normalized = self._normalize_thresholds(thresholds)
+        with self._lock:
+            if expected_version != self._threshold_version:
+                raise ThresholdVersionConflictError(self._threshold_version)
+            self._thresholds = normalized
+            self._threshold_version += 1
+            return self.threshold_configuration()
 
     def recent_events(
         self,
