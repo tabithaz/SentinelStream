@@ -55,7 +55,7 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-The dashboard is available at `http://127.0.0.1:8000/dashboard`. It can submit correlated telemetry, display correlation IDs in recent events, and inspect incident health across sources and metrics. The API is available at `http://127.0.0.1:8000`, with interactive documentation at `http://127.0.0.1:8000/docs`.
+The dashboard is available at `http://127.0.0.1:8000/dashboard`. It can submit correlated telemetry, display correlation IDs in recent events, inspect incident health across sources and metrics, and monitor a configurable reliability SLO with live error-budget burn. The API is available at `http://127.0.0.1:8000`, with interactive documentation at `http://127.0.0.1:8000/docs`.
 
 Set `SENTINELSTREAM_API_KEY` to protect every event-writing endpoint. Clients
 must then send the configured secret in the `X-API-Key` header. Key comparison
