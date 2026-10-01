@@ -29,6 +29,7 @@ The project focuses on the processing and observability layer that would sit beh
 - Source and metric health rankings
 - Throughput, burst, capacity, backlog, and partition-skew diagnostics
 - Reliability, retry, checkpoint, replay, dead-letter, and recovery analysis modules
+- Recent-window reliability SLOs with explicit error-budget burn and exhaustion status
 - Thread-safe batch processing with concurrency regression tests
 - FastAPI request validation and interactive OpenAPI documentation
 - Prometheus-compatible processing counters and health ratios
@@ -185,9 +186,17 @@ the cardinality section of `/events/stats`.
 | `GET` | `/events/health-summary` | Summarize monitored source health |
 | `GET` | `/events/quality-summary` | Classify accepted, duplicate, and anomalous data |
 | `GET` | `/events/reliability` | Combine stream failure signals |
+| `GET` | `/events/slo` | Measure recent reliability and error-budget burn against an SLO |
 | `GET` | `/events/recovery` | Recommend recovery action |
 
 Query parameters are validated by FastAPI. Recent-history and batch sizes are bounded to keep request work and process memory predictable.
+
+Use `/events/slo?target_percent=99.9&window_events=1000` to evaluate the most
+recent retained events against a reliability target. Anomalous or out-of-order
+events consume the budget; the response reports observed reliability, allowed
+and remaining bad events, burn percentage, and a `healthy`, `at_risk`, or
+`exhausted` deployment signal. A `no_data` result keeps empty windows distinct
+from perfect reliability.
 Event values must be finite JSON numbers. Source and metric identifiers are trimmed,
 limited to 100 characters, and rejected when blank; an invalid batch is rejected
 before any event in that request changes processor state.

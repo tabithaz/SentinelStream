@@ -38,6 +38,7 @@ from app.prometheus import render_prometheus_metrics
 from app.rate_limit import SlidingWindowRateLimiter
 from app.recovery import recommend_recovery
 from app.reliability import classify_stream_reliability
+from app.slo import summarize_event_slo
 
 app = FastAPI(title="SentinelStream", version="1.1.0")
 processor = EventProcessor()
@@ -669,6 +670,20 @@ def stream_reliability() -> dict:
         "duplicate_rate": duplicate_rate,
         "out_of_order_rate": stats["out_of_order_rate"],
     }
+
+
+@app.get("/events/slo")
+def event_reliability_slo(
+    target_percent: float = Query(default=99.0, gt=0, le=100),
+    window_events: int = Query(default=1000, ge=1, le=1000),
+) -> dict:
+    """Report event reliability and remaining error budget for a recent window."""
+    events = processor.recent_events(limit=window_events)
+    return summarize_event_slo(
+        events,
+        target_percent=target_percent,
+        window_events=window_events,
+    )
 
 
 @app.get("/events/recovery")
