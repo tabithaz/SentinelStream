@@ -35,6 +35,7 @@ The project focuses on the processing and observability layer that would sit beh
 - FastAPI request validation and interactive OpenAPI documentation
 - Prometheus-compatible processing counters and health ratios
 - Prometheus RED metrics for HTTP request rate, errors, latency, and in-flight work
+- Fail-closed Kubernetes readiness checks with bounded-cardinality headroom
 - Request IDs and structured access logs for cross-service tracing
 - Live browser dashboard for event submission and stream-health monitoring
 - Non-root Docker image with an application health check
@@ -172,6 +173,7 @@ the cardinality section of `/events/stats`.
 | `GET` | `/health` | Service readiness |
 | `GET` | `/dashboard` | Live event-processing and reliability dashboard |
 | `GET` | `/metrics` | Prometheus-compatible operational metrics |
+| `GET` | `/ready` | Deployment readiness and cardinality-capacity checks |
 | `POST` | `/events` | Process one telemetry event |
 | `POST` | `/events/batch` | Process 1 to 1000 events atomically |
 | `POST` | `/events/replay` | Validate and replay up to 1,000 NDJSON events atomically |
@@ -323,6 +325,13 @@ stream state. Valid events are replayed in timestamp order because exports are
 newest-first.
 
 The `/metrics` endpoint uses Prometheus text exposition format and reports received, accepted, duplicate, anomalous, and out-of-order event totals along with anomaly ratios and monitored-source counts. The endpoint intentionally avoids source labels so untrusted source names cannot create unbounded metric cardinality.
+
+`GET /health` is the liveness probe and remains healthy while the process can
+serve requests. `GET /ready` is the traffic-readiness probe: it returns HTTP 503
+before tracked source or stream cardinality reaches its configured bound, so an
+orchestrator can drain the instance while monitoring still has headroom. Set
+`SENTINELSTREAM_READINESS_CARDINALITY_PERCENT` to a value above 0 and at most
+100 to change the default 90% threshold.
 
 Every response includes an `X-Request-ID` header. Callers can provide a safe
 request ID using the same header, or SentinelStream generates one. Each request

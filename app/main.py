@@ -42,7 +42,7 @@ from app.recovery import recommend_recovery
 from app.reliability import classify_stream_reliability
 from app.slo import summarize_event_slo
 
-app = FastAPI(title="SentinelStream", version="1.3.0")
+app = FastAPI(title="SentinelStream", version="1.4.0")
 processor = EventProcessor()
 request_metrics = RequestMetrics()
 DASHBOARD_PATH = Path(__file__).parent / "static" / "dashboard.html"
@@ -51,6 +51,7 @@ REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
 MAX_REPLAY_BYTES = 1024 * 1024
 MAX_REPLAY_EVENTS = 1000
 DEFAULT_MAX_INGESTION_BYTES = 1024 * 1024
+DEFAULT_READINESS_CARDINALITY_PERCENT = 90.0
 ingestion_rate_limiter = SlidingWindowRateLimiter()
 
 
@@ -73,6 +74,20 @@ def _max_ingestion_bytes() -> int:
     except ValueError:
         return DEFAULT_MAX_INGESTION_BYTES
     return maximum if maximum > 0 else DEFAULT_MAX_INGESTION_BYTES
+
+
+def _readiness_cardinality_percent() -> float:
+    configured = os.getenv(
+        "SENTINELSTREAM_READINESS_CARDINALITY_PERCENT",
+        str(DEFAULT_READINESS_CARDINALITY_PERCENT),
+    )
+    try:
+        threshold = float(configured)
+    except ValueError:
+        return DEFAULT_READINESS_CARDINALITY_PERCENT
+    if not math.isfinite(threshold) or threshold <= 0 or threshold > 100:
+        return DEFAULT_READINESS_CARDINALITY_PERCENT
+    return threshold
 
 
 def _rate_limit_identity(request: Request) -> str:
@@ -261,6 +276,39 @@ async def validation_error_response(
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "healthy", "service": "sentinelstream"}
+
+
+@app.get("/ready")
+def readiness() -> JSONResponse:
+    """Fail closed before bounded cardinality prevents full-fidelity monitoring."""
+    cardinality = processor.stats()["cardinality"]
+    threshold = _readiness_cardinality_percent()
+    checks = {}
+    for name, tracked_key, limit_key in (
+        ("sources", "tracked_sources", "source_limit"),
+        ("streams", "tracked_streams", "stream_limit"),
+    ):
+        tracked = cardinality[tracked_key]
+        limit = cardinality[limit_key]
+        utilization = 100.0 * tracked / limit
+        checks[name] = {
+            "ready": utilization < threshold,
+            "tracked": tracked,
+            "limit": limit,
+            "utilization_percent": round(utilization, 2),
+        }
+
+    ready = all(check["ready"] for check in checks.values())
+    return JSONResponse(
+        status_code=200 if ready else 503,
+        content={
+            "status": "ready" if ready else "not_ready",
+            "service": "sentinelstream",
+            "cardinality_threshold_percent": threshold,
+            "checks": checks,
+        },
+        headers={} if ready else {"Retry-After": "5"},
+    )
 
 
 @app.get("/dashboard", include_in_schema=False)
