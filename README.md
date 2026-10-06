@@ -34,6 +34,7 @@ The project focuses on the processing and observability layer that would sit beh
 - Thread-safe batch processing with concurrency regression tests
 - FastAPI request validation and interactive OpenAPI documentation
 - Prometheus-compatible processing counters and health ratios
+- Prometheus RED metrics for HTTP request rate, errors, latency, and in-flight work
 - Request IDs and structured access logs for cross-service tracing
 - Live browser dashboard for event submission and stream-health monitoring
 - Non-root Docker image with an application health check
@@ -104,6 +105,11 @@ Verify the running service:
 curl http://127.0.0.1:8000/health
 curl http://127.0.0.1:8000/metrics
 ```
+
+The Prometheus endpoint includes bounded HTTP RED metrics labeled by FastAPI
+route templates rather than raw URLs. This exposes request totals by status,
+cumulative latency histograms, duration totals, and in-flight work without
+creating unbounded labels from event IDs or correlation IDs.
 
 ## Runnable example
 

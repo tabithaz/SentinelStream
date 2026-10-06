@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 import app.main as main
 from app.models import TelemetryEvent
 from app.processor import EventProcessor
-from app.prometheus import render_prometheus_metrics
+from app.prometheus import RequestMetrics, render_prometheus_metrics
 
 
 def event(value: float, timestamp: datetime | None = None) -> TelemetryEvent:
@@ -45,3 +45,47 @@ def test_metrics_endpoint_reports_live_processor_counters(monkeypatch) -> None:
     assert "sentinelstream_event_anomaly_ratio 0.5" in response.text
     assert "sentinelstream_sources_monitored 1" in response.text
     assert "sentinelstream_metrics_monitored 1" in response.text
+
+
+def test_request_metrics_exports_bounded_red_metrics(monkeypatch) -> None:
+    metrics = RequestMetrics()
+    monkeypatch.setattr(main, "request_metrics", metrics)
+    client = TestClient(main.app)
+
+    assert client.get("/health").status_code == 200
+    assert client.get("/events/recent?limit=0").status_code == 422
+    response = client.get("/metrics")
+
+    assert response.status_code == 200
+    assert (
+        'sentinelstream_http_requests_total{method="GET",route="/health",status="200"} 1'
+        in response.text
+    )
+    assert (
+        'sentinelstream_http_requests_total{method="GET",route="/events/recent",status="422"} 1'
+        in response.text
+    )
+    assert (
+        'sentinelstream_http_request_duration_seconds_bucket'
+        '{method="GET",route="/health",le="+Inf"} 1'
+        in response.text
+    )
+    assert (
+        'sentinelstream_http_request_duration_seconds_count'
+        '{method="GET",route="/health"} 1'
+        in response.text
+    )
+    assert "sentinelstream_http_requests_in_flight 1" in response.text
+
+
+def test_request_metrics_uses_route_templates_for_dynamic_paths(monkeypatch) -> None:
+    metrics = RequestMetrics()
+    monkeypatch.setattr(main, "request_metrics", metrics)
+    client = TestClient(main.app)
+
+    response = client.get("/events/id/" + "a" * 64)
+    assert response.status_code == 404
+    output = client.get("/metrics").text
+
+    assert 'route="/events/id/{event_id}"' in output
+    assert "a" * 64 not in output

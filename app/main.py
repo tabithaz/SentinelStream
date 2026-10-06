@@ -36,14 +36,15 @@ from app.processor import (
     IdempotencyConflictError,
     ThresholdVersionConflictError,
 )
-from app.prometheus import render_prometheus_metrics
+from app.prometheus import RequestMetrics, render_prometheus_metrics
 from app.rate_limit import SlidingWindowRateLimiter
 from app.recovery import recommend_recovery
 from app.reliability import classify_stream_reliability
 from app.slo import summarize_event_slo
 
-app = FastAPI(title="SentinelStream", version="1.2.0")
+app = FastAPI(title="SentinelStream", version="1.3.0")
 processor = EventProcessor()
+request_metrics = RequestMetrics()
 DASHBOARD_PATH = Path(__file__).parent / "static" / "dashboard.html"
 LOGGER = logging.getLogger("sentinelstream.access")
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
@@ -168,8 +169,27 @@ async def request_trace(request: Request, call_next):
         else uuid4().hex
     )
     started_at = time.perf_counter()
-    response = await call_next(request)
-    duration_ms = round((time.perf_counter() - started_at) * 1000, 3)
+    request_metrics.begin()
+    try:
+        response = await call_next(request)
+    except BaseException:
+        request_metrics.observe(
+            request.method,
+            "unhandled",
+            500,
+            time.perf_counter() - started_at,
+        )
+        raise
+    duration_seconds = time.perf_counter() - started_at
+    route = request.scope.get("route")
+    route_path = getattr(route, "path", "unmatched")
+    request_metrics.observe(
+        request.method,
+        route_path,
+        response.status_code,
+        duration_seconds,
+    )
+    duration_ms = round(duration_seconds * 1000, 3)
     response.headers["X-Request-ID"] = request_id
     LOGGER.info(
         json.dumps(
@@ -251,7 +271,7 @@ def dashboard() -> FileResponse:
 @app.get("/metrics", include_in_schema=False)
 def prometheus_metrics() -> Response:
     return Response(
-        content=render_prometheus_metrics(processor.stats()),
+        content=render_prometheus_metrics(processor.stats(), request_metrics.snapshot()),
         media_type="text/plain; version=0.0.4",
     )
 
