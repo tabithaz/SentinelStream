@@ -25,6 +25,7 @@ The project focuses on the processing and observability layer that would sit beh
 - Cursor-based pagination through retained event history
 - Bounded source aggregates and LRU stream-ordering state for cardinality safety
 - Filtered NDJSON event export for incident analysis and replay pipelines
+- Spreadsheet-safe CSV event export for analyst handoff and incident review
 - Bounded, atomic NDJSON replay for incident reproduction
 - Source and metric health rankings
 - Throughput, burst, capacity, backlog, and partition-skew diagnostics
@@ -175,6 +176,7 @@ the cardinality section of `/events/stats`.
 | `GET` | `/events/correlations/{correlation_id}` | Summarize one correlated incident or workflow |
 | `GET` | `/events/correlations/{correlation_id}/analysis` | Trace the first fault and its propagation across streams |
 | `GET` | `/events/export` | Export filtered recent history as NDJSON |
+| `GET` | `/events/export.csv` | Export filtered recent history as spreadsheet-safe CSV |
 | `GET` | `/events/stats` | Inspect processing, anomaly, duplicate, and ordering totals |
 | `GET` | `/events/sources` | Rank source health |
 | `GET` | `/events/metrics` | Rank metric health |
@@ -251,6 +253,18 @@ curl http://127.0.0.1:8000/events/id/16669d45081d7a7a4907b54a8c1fbc60872385426f3
 ```
 
 Malformed IDs return HTTP 422 and valid IDs outside the retained history return HTTP 404.
+
+Export up to 1,000 retained events directly to a spreadsheet while preserving
+the same source, metric, correlation, anomaly, and time-window filters used by
+the NDJSON export:
+
+```bash
+curl -OJ "http://127.0.0.1:8000/events/export.csv?source=sensor-alpha&anomalies_only=true"
+```
+
+The file is ordered newest-first, includes the event and correlation IDs needed
+for investigation, and neutralizes formula-like text before it reaches Excel or
+Google Sheets.
 
 Investigate the events surrounding a retained event with a chronological context window:
 

@@ -1,7 +1,9 @@
+import csv
 from dataclasses import asdict
 from datetime import datetime, timezone
 import hashlib
 import hmac
+from io import StringIO
 import json
 import logging
 import math
@@ -40,7 +42,7 @@ from app.recovery import recommend_recovery
 from app.reliability import classify_stream_reliability
 from app.slo import summarize_event_slo
 
-app = FastAPI(title="SentinelStream", version="1.1.0")
+app = FastAPI(title="SentinelStream", version="1.2.0")
 processor = EventProcessor()
 DASHBOARD_PATH = Path(__file__).parent / "static" / "dashboard.html"
 LOGGER = logging.getLogger("sentinelstream.access")
@@ -218,6 +220,13 @@ def _json_safe(value: object) -> object:
         return {key: _json_safe(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
         return [_json_safe(item) for item in value]
+    return value
+
+
+def _spreadsheet_safe(value: object) -> object:
+    """Keep exported text from being evaluated as a spreadsheet formula."""
+    if isinstance(value, str) and value.lstrip().startswith(("=", "+", "-", "@")):
+        return f"'{value}"
     return value
 
 
@@ -488,6 +497,60 @@ def export_events(
         media_type="application/x-ndjson",
         headers={
             "Content-Disposition": 'attachment; filename="sentinelstream-events.ndjson"',
+            "X-Event-Count": str(len(events)),
+        },
+    )
+
+
+@app.get("/events/export.csv", include_in_schema=True)
+def export_events_csv(
+    limit: int = Query(default=1000, ge=1, le=1000),
+    metric: str | None = None,
+    source: str | None = None,
+    correlation_id: str | None = Query(default=None, min_length=1, max_length=100),
+    anomalies_only: bool = False,
+    since: datetime | None = None,
+    until: datetime | None = None,
+) -> Response:
+    """Export bounded recent history as spreadsheet-safe CSV."""
+    since = _utc_timestamp(since)
+    until = _utc_timestamp(until)
+    _validate_time_window(since, until)
+    correlation_id = _normalize_correlation_filter(correlation_id)
+    events = processor.recent_events(
+        limit=limit,
+        metric=metric,
+        source=source,
+        correlation_id=correlation_id,
+        anomalies_only=anomalies_only,
+        since=since,
+        until=until,
+    )
+    columns = (
+        "event_id",
+        "source",
+        "metric",
+        "correlation_id",
+        "value",
+        "timestamp",
+        "anomaly",
+        "out_of_order",
+    )
+    output = StringIO(newline="")
+    writer = csv.DictWriter(output, fieldnames=columns, lineterminator="\n")
+    writer.writeheader()
+    for event in events:
+        writer.writerow(
+            {
+                column: _spreadsheet_safe(event.get(column, ""))
+                for column in columns
+            }
+        )
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": 'attachment; filename="sentinelstream-events.csv"',
             "X-Event-Count": str(len(events)),
         },
     )
