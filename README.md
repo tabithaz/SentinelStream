@@ -36,6 +36,7 @@ The project focuses on the processing and observability layer that would sit beh
 - Prometheus-compatible processing counters and health ratios
 - Prometheus RED metrics for HTTP request rate, errors, latency, and in-flight work
 - Fail-closed Kubernetes readiness checks with bounded-cardinality headroom
+- Highly available Kubernetes deployment with hardened pod security and zero-downtime rollouts
 - Request IDs and structured access logs for cross-service tracing
 - Live browser dashboard for event submission and stream-health monitoring
 - Non-root Docker image with an application health check
@@ -47,6 +48,7 @@ The project focuses on the processing and observability layer that would sit beh
 - FastAPI and Pydantic
 - pytest and HTTPX
 - Docker
+- Kubernetes
 - GitHub Actions
 
 ## Run locally
@@ -111,6 +113,24 @@ The Prometheus endpoint includes bounded HTTP RED metrics labeled by FastAPI
 route templates rather than raw URLs. This exposes request totals by status,
 cumulative latency histograms, duration totals, and in-flight work without
 creating unbounded labels from event IDs or correlation IDs.
+
+## Run on Kubernetes
+
+The deployment manifest runs two replicas behind a ClusterIP service and uses
+separate startup, liveness, and readiness probes. It also sets CPU and memory
+budgets, drops Linux capabilities, uses a read-only root filesystem, and keeps
+one replica available during voluntary disruptions and rolling updates.
+
+```bash
+kubectl apply -f deploy/kubernetes.yaml
+kubectl rollout status deployment/sentinelstream
+kubectl port-forward service/sentinelstream 8000:80
+```
+
+The manifest references `ghcr.io/tabithaz/sentinelstream:latest`; replace that
+image with an immutable release tag from the target registry before a production
+rollout. The readiness threshold and ingestion body limit are configured as
+environment variables in the manifest.
 
 ## Runnable example
 
