@@ -3,7 +3,7 @@ import json
 from copy import deepcopy
 from collections import OrderedDict, defaultdict, deque
 from collections.abc import Mapping
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from threading import RLock
 
 from app.models import TelemetryEvent
@@ -38,6 +38,7 @@ class EventProcessor:
         idempotency_size: int = 5000,
         source_cardinality_limit: int = 1000,
         stream_cardinality_limit: int = 5000,
+        threshold_history_size: int = 100,
     ) -> None:
         if history_size <= 0:
             raise ValueError("history_size must be greater than zero")
@@ -49,10 +50,22 @@ class EventProcessor:
             raise ValueError("source_cardinality_limit must be greater than zero")
         if stream_cardinality_limit <= 0:
             raise ValueError("stream_cardinality_limit must be greater than zero")
+        if threshold_history_size <= 0:
+            raise ValueError("threshold_history_size must be greater than zero")
 
         configured = thresholds if thresholds is not None else DEFAULT_THRESHOLDS
         self._thresholds = self._normalize_thresholds(configured)
         self._threshold_version = 1
+        self._threshold_history: deque[dict] = deque(maxlen=threshold_history_size)
+        self._threshold_history.append(
+            self._threshold_audit_record(
+                version=1,
+                reason="initial_configuration",
+                added=sorted(self._thresholds),
+                removed=[],
+                modified=[],
+            )
+        )
         self._processed = 0
         self._anomalies = 0
         self._duplicates = 0
@@ -218,15 +231,66 @@ class EventProcessor:
         self,
         thresholds: Mapping[str, tuple[float, float]],
         expected_version: int,
+        reason: str | None = None,
     ) -> dict:
         """Atomically replace thresholds when the caller has the current version."""
         normalized = self._normalize_thresholds(thresholds)
+        normalized_reason = reason.strip() if reason is not None else "unspecified"
+        if not normalized_reason:
+            raise ValueError("threshold change reason must not be blank")
         with self._lock:
             if expected_version != self._threshold_version:
                 raise ThresholdVersionConflictError(self._threshold_version)
+            previous = self._thresholds
+            added = sorted(set(normalized) - set(previous))
+            removed = sorted(set(previous) - set(normalized))
+            modified = sorted(
+                metric
+                for metric in set(previous) & set(normalized)
+                if previous[metric] != normalized[metric]
+            )
             self._thresholds = normalized
             self._threshold_version += 1
+            self._threshold_history.append(
+                self._threshold_audit_record(
+                    version=self._threshold_version,
+                    reason=normalized_reason,
+                    added=added,
+                    removed=removed,
+                    modified=modified,
+                )
+            )
             return self.threshold_configuration()
+
+    def threshold_history(self, limit: int = 20) -> list[dict]:
+        """Return newest-first threshold configuration audit records."""
+        if limit <= 0:
+            raise ValueError("limit must be greater than zero")
+        with self._lock:
+            return deepcopy(list(reversed(self._threshold_history))[:limit])
+
+    def _threshold_audit_record(
+        self,
+        version: int,
+        reason: str,
+        added: list[str],
+        removed: list[str],
+        modified: list[str],
+    ) -> dict:
+        return {
+            "version": version,
+            "changed_at": datetime.now(timezone.utc).isoformat(),
+            "reason": reason,
+            "changes": {
+                "added": added,
+                "removed": removed,
+                "modified": modified,
+            },
+            "thresholds": {
+                metric: {"minimum": bounds[0], "maximum": bounds[1]}
+                for metric, bounds in sorted(self._thresholds.items())
+            },
+        }
 
     def recent_events(
         self,

@@ -705,10 +705,26 @@ def anomaly_thresholds() -> JSONResponse:
     )
 
 
+@app.get("/events/thresholds/history")
+def anomaly_threshold_history(
+    limit: int = Query(default=20, ge=1, le=100),
+) -> dict:
+    history = processor.threshold_history(limit=limit)
+    return {
+        "records": history,
+        "count": len(history),
+        "current_version": processor.threshold_configuration()["version"],
+    }
+
+
 @app.put("/events/thresholds")
 def replace_anomaly_thresholds(
     configuration: ThresholdConfiguration,
     if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    change_reason: Annotated[
+        str | None,
+        Header(alias="X-Change-Reason", min_length=1, max_length=200),
+    ] = None,
 ) -> JSONResponse:
     if if_match is None:
         raise HTTPException(
@@ -726,8 +742,17 @@ def replace_anomaly_thresholds(
         metric: (bounds.minimum, bounds.maximum)
         for metric, bounds in configuration.thresholds.items()
     }
+    if change_reason is not None and not change_reason.strip():
+        raise HTTPException(
+            status_code=422,
+            detail="X-Change-Reason must not be blank",
+        )
     try:
-        updated = processor.replace_thresholds(thresholds, int(match.group(1)))
+        updated = processor.replace_thresholds(
+            thresholds,
+            int(match.group(1)),
+            reason=change_reason,
+        )
     except ThresholdVersionConflictError as error:
         return JSONResponse(
             status_code=412,

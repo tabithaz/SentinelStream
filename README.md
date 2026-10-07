@@ -15,6 +15,7 @@ The project focuses on the processing and observability layer that would sit beh
 - UTC timestamp normalization and out-of-order detection
 - Configurable metric thresholds and anomaly classification
 - Versioned runtime threshold updates with optimistic concurrency control
+- Bounded threshold-change audit history with reasons and metric-level diffs
 - Bounded event history and duplicate-delivery suppression
 - Deterministic event IDs for tracing accepted events and duplicate deliveries
 - End-to-end correlation IDs for distributed incident tracing
@@ -209,6 +210,7 @@ the cardinality section of `/events/stats`.
 | `GET` | `/events/sources` | Rank source health |
 | `GET` | `/events/metrics` | Rank metric health |
 | `GET` | `/events/thresholds` | Read active anomaly thresholds and version |
+| `GET` | `/events/thresholds/history` | Audit threshold versions, reasons, and changed metrics |
 | `PUT` | `/events/thresholds` | Atomically replace thresholds using `If-Match` |
 | `GET` | `/events/throughput` | Analyze recent throughput windows |
 | `GET` | `/events/bursts` | Detect bursty arrival windows |
@@ -236,6 +238,9 @@ current configuration and its `ETag`, then send that value in `If-Match` when
 replacing the complete threshold set. A concurrent update returns HTTP 412
 instead of silently overwriting newer policy. When API-key protection is
 configured, threshold writes require the same `X-API-Key` used for ingestion.
+Add `X-Change-Reason` to record why a threshold set changed. The bounded audit
+history stores each version's timestamp, exact configuration, and added,
+removed, or modified metric names; stale and rejected updates are not recorded.
 
 ```bash
 etag=$(curl -sD - http://127.0.0.1:8000/events/thresholds -o /dev/null \

@@ -28,7 +28,10 @@ def test_thresholds_are_versioned_and_change_anomaly_policy(monkeypatch) -> None
 
     updated = client.put(
         "/events/thresholds",
-        headers={"If-Match": current.headers["etag"]},
+        headers={
+            "If-Match": current.headers["etag"],
+            "X-Change-Reason": "narrow temperature range after calibration",
+        },
         json={
             "thresholds": {
                 " Temperature ": {"minimum": 0, "maximum": 70},
@@ -54,6 +57,22 @@ def test_thresholds_are_versioned_and_change_anomaly_policy(monkeypatch) -> None
     assert event.status_code == 200
     assert event.json()["anomaly"] is True
 
+    history = client.get("/events/thresholds/history").json()
+    assert history["count"] == 2
+    assert history["current_version"] == 2
+    assert history["records"][0]["reason"] == (
+        "narrow temperature range after calibration"
+    )
+    assert history["records"][0]["changes"] == {
+        "added": [],
+        "removed": ["pressure", "voltage"],
+        "modified": ["temperature"],
+    }
+    assert history["records"][0]["thresholds"] == {
+        "temperature": {"minimum": 0.0, "maximum": 70.0}
+    }
+    assert history["records"][0]["changed_at"].endswith("+00:00")
+
 
 def test_stale_update_is_rejected_without_mutating_configuration(monkeypatch) -> None:
     isolated_processor(monkeypatch)
@@ -70,6 +89,7 @@ def test_stale_update_is_rejected_without_mutating_configuration(monkeypatch) ->
     assert stale.headers["etag"] == '"2"'
     assert stale.json()["current_version"] == 2
     assert client.get("/events/thresholds").json()["version"] == 2
+    assert client.get("/events/thresholds/history").json()["count"] == 2
 
 
 def test_threshold_update_requires_and_validates_precondition(monkeypatch) -> None:
@@ -124,3 +144,34 @@ def test_threshold_writes_follow_api_key_policy(monkeypatch) -> None:
 
     assert denied.status_code == 401
     assert accepted.status_code == 200
+
+
+def test_threshold_history_is_bounded_and_supports_limits() -> None:
+    processor = EventProcessor(threshold_history_size=2)
+    processor.replace_thresholds({"temperature": (0, 80)}, 1, reason="first")
+    processor.replace_thresholds({"temperature": (0, 70)}, 2, reason="second")
+
+    history = processor.threshold_history()
+
+    assert [record["version"] for record in history] == [3, 2]
+    assert [record["reason"] for record in history] == ["second", "first"]
+    assert processor.threshold_history(limit=1) == [history[0]]
+
+
+def test_threshold_change_reason_is_validated(monkeypatch) -> None:
+    isolated_processor(monkeypatch)
+    response = client.put(
+        "/events/thresholds",
+        headers={"If-Match": '"1"', "X-Change-Reason": "   "},
+        json={"thresholds": {"temperature": {"minimum": 0, "maximum": 80}}},
+    )
+
+    assert response.status_code == 422
+    assert client.get("/events/thresholds/history").json()["count"] == 1
+
+
+def test_threshold_history_validates_limit(monkeypatch) -> None:
+    isolated_processor(monkeypatch)
+
+    assert client.get("/events/thresholds/history?limit=0").status_code == 422
+    assert client.get("/events/thresholds/history?limit=101").status_code == 422
