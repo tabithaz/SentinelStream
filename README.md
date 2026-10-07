@@ -38,6 +38,7 @@ The project focuses on the processing and observability layer that would sit beh
 - Prometheus RED metrics for HTTP request rate, errors, latency, and in-flight work
 - Fail-closed Kubernetes readiness checks with bounded-cardinality headroom
 - Highly available Kubernetes deployment with hardened pod security and zero-downtime rollouts
+- CPU- and memory-aware Kubernetes autoscaling with scale-down stabilization
 - Request IDs and structured access logs for cross-service tracing
 - Live browser dashboard for event submission and stream-health monitoring
 - Non-root Docker image with an application health check
@@ -117,10 +118,13 @@ creating unbounded labels from event IDs or correlation IDs.
 
 ## Run on Kubernetes
 
-The deployment manifest runs two replicas behind a ClusterIP service and uses
-separate startup, liveness, and readiness probes. It also sets CPU and memory
-budgets, drops Linux capabilities, uses a read-only root filesystem, and keeps
-one replica available during voluntary disruptions and rolling updates.
+The deployment manifest starts with two replicas behind a ClusterIP service and
+uses separate startup, liveness, and readiness probes. It also sets CPU and
+memory budgets, drops Linux capabilities, uses a read-only root filesystem, and
+keeps one replica available during voluntary disruptions and rolling updates.
+An `autoscaling/v2` HPA scales the deployment from 2 to 10 replicas at 70% CPU
+or 75% memory utilization. Scale-up can react within a minute, while a five-minute
+scale-down stabilization window prevents short traffic dips from causing churn.
 
 ```bash
 kubectl apply -f deploy/kubernetes.yaml
@@ -128,7 +132,9 @@ kubectl rollout status deployment/sentinelstream
 kubectl port-forward service/sentinelstream 8000:80
 ```
 
-The manifest references `ghcr.io/tabithaz/sentinelstream:latest`; replace that
+The autoscaler requires Kubernetes Metrics Server or another implementation of
+the resource metrics API. The manifest references
+`ghcr.io/tabithaz/sentinelstream:latest`; replace that
 image with an immutable release tag from the target registry before a production
 rollout. The readiness threshold and ingestion body limit are configured as
 environment variables in the manifest.

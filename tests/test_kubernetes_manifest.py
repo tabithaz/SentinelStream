@@ -4,10 +4,11 @@ from pathlib import Path
 MANIFEST = (Path(__file__).parents[1] / "deploy" / "kubernetes.yaml").read_text()
 
 
-def test_manifest_provisions_service_deployment_and_disruption_budget():
+def test_manifest_provisions_service_deployment_disruption_budget_and_autoscaler():
     assert "kind: Service" in MANIFEST
     assert "kind: Deployment" in MANIFEST
     assert "kind: PodDisruptionBudget" in MANIFEST
+    assert "kind: HorizontalPodAutoscaler" in MANIFEST
     assert "replicas: 2" in MANIFEST
     assert "minAvailable: 1" in MANIFEST
 
@@ -36,3 +37,19 @@ def test_deployment_enforces_a_hardened_non_root_container():
     assert "allowPrivilegeEscalation: false" in MANIFEST
     assert "readOnlyRootFilesystem: true" in MANIFEST
     assert "drop:\n                - ALL" in MANIFEST
+
+
+def test_autoscaler_uses_cpu_and_memory_with_safe_replica_bounds():
+    assert "apiVersion: autoscaling/v2" in MANIFEST
+    assert "minReplicas: 2" in MANIFEST
+    assert "maxReplicas: 10" in MANIFEST
+    assert "name: cpu" in MANIFEST
+    assert "averageUtilization: 70" in MANIFEST
+    assert "name: memory" in MANIFEST
+    assert "averageUtilization: 75" in MANIFEST
+
+
+def test_autoscaler_limits_scale_down_churn():
+    assert "scaleDown:" in MANIFEST
+    assert "stabilizationWindowSeconds: 300" in MANIFEST
+    assert "value: 25" in MANIFEST
