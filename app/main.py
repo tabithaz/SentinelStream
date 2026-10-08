@@ -29,6 +29,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import ValidationError
 
 from app.bursts import analyze_event_bursts
+from app.bulkhead import InFlightLimiter
 from app.capacity import summarize_backpressure
 from app.models import TelemetryEvent, ThresholdConfiguration
 from app.processor import (
@@ -53,6 +54,7 @@ MAX_REPLAY_EVENTS = 1000
 DEFAULT_MAX_INGESTION_BYTES = 1024 * 1024
 DEFAULT_READINESS_CARDINALITY_PERCENT = 90.0
 ingestion_rate_limiter = SlidingWindowRateLimiter()
+ingestion_concurrency_limiter = InFlightLimiter()
 
 
 def _ingestion_rate_limit() -> int:
@@ -74,6 +76,15 @@ def _max_ingestion_bytes() -> int:
     except ValueError:
         return DEFAULT_MAX_INGESTION_BYTES
     return maximum if maximum > 0 else DEFAULT_MAX_INGESTION_BYTES
+
+
+def _max_concurrent_ingestion() -> int:
+    configured = os.getenv("SENTINELSTREAM_MAX_CONCURRENT_INGESTION", "0")
+    try:
+        limit = int(configured)
+    except ValueError:
+        return 0
+    return max(0, limit)
 
 
 def _readiness_cardinality_percent() -> float:
@@ -143,6 +154,31 @@ async def limit_event_ingestion(request: Request, call_next):
     response = await call_next(request)
     response.headers.update(headers)
     return response
+
+
+@app.middleware("http")
+async def limit_concurrent_ingestion(request: Request, call_next):
+    """Fail fast when concurrent event-writing work reaches its configured cap."""
+    limit = _max_concurrent_ingestion()
+    is_event_write = request.method == "POST" and request.url.path.startswith("/events")
+    if not limit or not is_event_write:
+        return await call_next(request)
+
+    if not ingestion_concurrency_limiter.try_acquire(limit):
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "event ingestion concurrency limit reached"},
+            headers={
+                "Retry-After": "1",
+                "X-Concurrency-Limit": str(limit),
+            },
+        )
+    try:
+        response = await call_next(request)
+        response.headers["X-Concurrency-Limit"] = str(limit)
+        return response
+    finally:
+        ingestion_concurrency_limiter.release()
 
 
 @app.middleware("http")

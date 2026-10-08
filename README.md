@@ -10,6 +10,7 @@ The project focuses on the processing and observability layer that would sit beh
 - Bounded producer idempotency keys for safe single and batch retries
 - Optional constant-time API-key authentication for event ingestion
 - Optional bounded per-client ingestion rate limiting with retry guidance
+- Optional concurrent-ingestion bulkhead with fail-fast overload signaling
 - Configurable request-body limits for ingestion resource protection
 - Rejection of non-finite readings and blank stream identifiers before state mutation
 - UTC timestamp normalization and out-of-order detection
@@ -91,6 +92,12 @@ limit is disabled by default.
 docker run --rm -p 8000:8000 \
   -e SENTINELSTREAM_INGEST_RATE_LIMIT=120 sentinelstream-api
 ```
+
+Set `SENTINELSTREAM_MAX_CONCURRENT_INGESTION` to a positive integer to cap
+simultaneous event-writing requests. Saturated callers receive HTTP 503 with
+`Retry-After` and `X-Concurrency-Limit` headers instead of waiting and consuming
+more application capacity. Slots are released after both successful and failed
+requests. The bulkhead is disabled by default.
 
 Event-writing request bodies are capped at 1 MiB by default, before JSON or
 NDJSON parsing. Set `SENTINELSTREAM_MAX_INGESTION_BYTES` to a positive byte
