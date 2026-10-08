@@ -64,9 +64,27 @@ def test_bulkhead_is_thread_safe_and_never_exceeds_capacity() -> None:
 
     assert sum(acquired) == 5
     assert limiter.in_flight == 5
+    assert limiter.snapshot(5) == {
+        "limit": 5,
+        "in_flight": 5,
+        "rejected_total": 15,
+    }
     for _ in range(5):
         limiter.release()
     assert limiter.in_flight == 0
+
+
+def test_bulkhead_metrics_report_capacity_and_rejections() -> None:
+    assert main.ingestion_concurrency_limiter.try_acquire(1) is True
+    try:
+        assert client.post("/events", json=event()).status_code == 503
+        response = client.get("/metrics")
+    finally:
+        main.ingestion_concurrency_limiter.release()
+
+    assert "sentinelstream_ingestion_concurrency_limit 1" in response.text
+    assert "sentinelstream_ingestion_requests_in_flight 1" in response.text
+    assert "sentinelstream_ingestion_requests_rejected_total 1" in response.text
 
 
 @pytest.mark.parametrize("configured", ["0", "-1", "invalid"])

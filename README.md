@@ -97,7 +97,9 @@ Set `SENTINELSTREAM_MAX_CONCURRENT_INGESTION` to a positive integer to cap
 simultaneous event-writing requests. Saturated callers receive HTTP 503 with
 `Retry-After` and `X-Concurrency-Limit` headers instead of waiting and consuming
 more application capacity. Slots are released after both successful and failed
-requests. The bulkhead is disabled by default.
+requests. The bulkhead is disabled by default. Prometheus reports its configured
+capacity, current utilization, and cumulative saturation rejections so operators
+can alert before sustained overload affects ingestion availability.
 
 Event-writing request bodies are capped at 1 MiB by default, before JSON or
 NDJSON parsing. Set `SENTINELSTREAM_MAX_INGESTION_BYTES` to a positive byte

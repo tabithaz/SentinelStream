@@ -59,7 +59,11 @@ def _label(value: str) -> str:
     return value.replace("\\", "\\\\").replace("\n", "\\n").replace('"', '\\"')
 
 
-def render_prometheus_metrics(stats: dict, requests: dict | None = None) -> str:
+def render_prometheus_metrics(
+    stats: dict,
+    requests: dict | None = None,
+    bulkhead: dict | None = None,
+) -> str:
     received = stats["processed"] + stats["duplicates"]
     metrics = (
         (
@@ -167,5 +171,17 @@ def render_prometheus_metrics(stats: dict, requests: dict | None = None) -> str:
             "# HELP sentinelstream_http_requests_in_flight HTTP requests currently executing.",
             "# TYPE sentinelstream_http_requests_in_flight gauge",
             f'sentinelstream_http_requests_in_flight {requests["in_flight"]}',
+        ))
+    if bulkhead is not None:
+        lines.extend((
+            "# HELP sentinelstream_ingestion_concurrency_limit Configured concurrent ingestion capacity; zero means disabled.",
+            "# TYPE sentinelstream_ingestion_concurrency_limit gauge",
+            f'sentinelstream_ingestion_concurrency_limit {bulkhead["limit"]}',
+            "# HELP sentinelstream_ingestion_requests_in_flight Event-writing requests currently holding bulkhead capacity.",
+            "# TYPE sentinelstream_ingestion_requests_in_flight gauge",
+            f'sentinelstream_ingestion_requests_in_flight {bulkhead["in_flight"]}',
+            "# HELP sentinelstream_ingestion_requests_rejected_total Event-writing requests rejected because the bulkhead was saturated.",
+            "# TYPE sentinelstream_ingestion_requests_rejected_total counter",
+            f'sentinelstream_ingestion_requests_rejected_total {bulkhead["rejected_total"]}',
         ))
     return "\n".join(lines) + "\n"

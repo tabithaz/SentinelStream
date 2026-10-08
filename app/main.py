@@ -355,7 +355,11 @@ def dashboard() -> FileResponse:
 @app.get("/metrics", include_in_schema=False)
 def prometheus_metrics() -> Response:
     return Response(
-        content=render_prometheus_metrics(processor.stats(), request_metrics.snapshot()),
+        content=render_prometheus_metrics(
+            processor.stats(),
+            request_metrics.snapshot(),
+            ingestion_concurrency_limiter.snapshot(_max_concurrent_ingestion()),
+        ),
         media_type="text/plain; version=0.0.4",
     )
 
