@@ -30,6 +30,21 @@ def test_deployment_has_zero_downtime_rollout_and_resource_budgets():
     assert "memory: 512Mi" in MANIFEST
 
 
+def test_deployment_spreads_replicas_across_zones_and_hosts():
+    assert "topologySpreadConstraints:" in MANIFEST
+    assert "topologyKey: topology.kubernetes.io/zone" in MANIFEST
+    assert "topologyKey: kubernetes.io/hostname" in MANIFEST
+    assert MANIFEST.count("maxSkew: 1") == 2
+    assert MANIFEST.count("whenUnsatisfiable: ScheduleAnyway") == 2
+
+
+def test_topology_spread_selectors_match_the_deployment_pods():
+    topology_section = MANIFEST.split("topologySpreadConstraints:", 1)[1].split(
+        "securityContext:", 1
+    )[0]
+    assert topology_section.count("app.kubernetes.io/name: sentinelstream") == 2
+
+
 def test_deployment_enforces_a_hardened_non_root_container():
     assert "runAsNonRoot: true" in MANIFEST
     assert "runAsUser: 10001" in MANIFEST
