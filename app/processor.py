@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 from copy import deepcopy
 from collections import OrderedDict, defaultdict, deque
 from collections.abc import Mapping
@@ -88,6 +89,38 @@ class EventProcessor:
         self._idempotency_size = idempotency_size
         self._idempotency_results: OrderedDict[str, tuple[tuple, dict]] = OrderedDict()
         self._lock = RLock()
+
+    @classmethod
+    def from_environment(cls) -> "EventProcessor":
+        """Build a processor from validated deployment capacity settings."""
+        settings = {
+            "history_size": ("SENTINELSTREAM_HISTORY_SIZE", 1000),
+            "deduplication_size": ("SENTINELSTREAM_DEDUPLICATION_SIZE", 5000),
+            "idempotency_size": ("SENTINELSTREAM_IDEMPOTENCY_SIZE", 5000),
+            "source_cardinality_limit": (
+                "SENTINELSTREAM_SOURCE_CARDINALITY_LIMIT",
+                1000,
+            ),
+            "stream_cardinality_limit": (
+                "SENTINELSTREAM_STREAM_CARDINALITY_LIMIT",
+                5000,
+            ),
+            "threshold_history_size": (
+                "SENTINELSTREAM_THRESHOLD_HISTORY_SIZE",
+                100,
+            ),
+        }
+        configured: dict[str, int] = {}
+        for argument, (variable, default) in settings.items():
+            raw_value = os.getenv(variable, str(default))
+            try:
+                value = int(raw_value)
+            except ValueError as error:
+                raise ValueError(f"{variable} must be a positive integer") from error
+            if value <= 0:
+                raise ValueError(f"{variable} must be a positive integer")
+            configured[argument] = value
+        return cls(**configured)
 
     def process(self, event: TelemetryEvent) -> dict:
         with self._lock:

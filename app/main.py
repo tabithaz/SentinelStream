@@ -44,7 +44,7 @@ from app.reliability import classify_stream_reliability
 from app.slo import summarize_event_slo
 
 app = FastAPI(title="SentinelStream", version="1.4.0")
-processor = EventProcessor()
+processor = EventProcessor.from_environment()
 request_metrics = RequestMetrics()
 DASHBOARD_PATH = Path(__file__).parent / "static" / "dashboard.html"
 LOGGER = logging.getLogger("sentinelstream.access")

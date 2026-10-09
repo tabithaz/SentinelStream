@@ -107,6 +107,14 @@ limit when a deployment needs a different ceiling. Oversized requests receive
 HTTP 413 and `X-Max-Request-Bytes`; rejected payloads cannot mutate stream state.
 The replay endpoint keeps its existing 1 MiB ceiling when the general limit is raised.
 
+Production memory bounds are configurable without rebuilding the service. Set
+`SENTINELSTREAM_HISTORY_SIZE`, `SENTINELSTREAM_DEDUPLICATION_SIZE`,
+`SENTINELSTREAM_IDEMPOTENCY_SIZE`, `SENTINELSTREAM_SOURCE_CARDINALITY_LIMIT`,
+`SENTINELSTREAM_STREAM_CARDINALITY_LIMIT`, or
+`SENTINELSTREAM_THRESHOLD_HISTORY_SIZE` to positive integers. SentinelStream
+fails fast during startup when any capacity setting is invalid instead of
+silently running with an unintended memory or observability limit.
+
 ## Run with Docker
 
 ```bash

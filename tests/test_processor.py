@@ -72,6 +72,46 @@ def test_empty_stats_have_zero_anomaly_rate() -> None:
     assert stats["metrics"] == {}
 
 
+def test_processor_capacity_can_be_configured_from_environment(monkeypatch) -> None:
+    monkeypatch.setenv("SENTINELSTREAM_HISTORY_SIZE", "2")
+    monkeypatch.setenv("SENTINELSTREAM_DEDUPLICATION_SIZE", "3")
+    monkeypatch.setenv("SENTINELSTREAM_IDEMPOTENCY_SIZE", "4")
+    monkeypatch.setenv("SENTINELSTREAM_SOURCE_CARDINALITY_LIMIT", "5")
+    monkeypatch.setenv("SENTINELSTREAM_STREAM_CARDINALITY_LIMIT", "6")
+    monkeypatch.setenv("SENTINELSTREAM_THRESHOLD_HISTORY_SIZE", "7")
+
+    processor = EventProcessor.from_environment()
+
+    assert processor._recent_events.maxlen == 2
+    assert processor._deduplication_size == 3
+    assert processor._idempotency_size == 4
+    assert processor.stats()["cardinality"]["source_limit"] == 5
+    assert processor.stats()["cardinality"]["stream_limit"] == 6
+    assert processor._threshold_history.maxlen == 7
+
+
+@pytest.mark.parametrize(
+    ("variable", "value"),
+    [
+        ("SENTINELSTREAM_HISTORY_SIZE", "0"),
+        ("SENTINELSTREAM_DEDUPLICATION_SIZE", "invalid"),
+        ("SENTINELSTREAM_IDEMPOTENCY_SIZE", "-1"),
+        ("SENTINELSTREAM_SOURCE_CARDINALITY_LIMIT", "1.5"),
+        ("SENTINELSTREAM_STREAM_CARDINALITY_LIMIT", ""),
+        ("SENTINELSTREAM_THRESHOLD_HISTORY_SIZE", "-10"),
+    ],
+)
+def test_processor_rejects_invalid_capacity_configuration(
+    monkeypatch,
+    variable: str,
+    value: str,
+) -> None:
+    monkeypatch.setenv(variable, value)
+
+    with pytest.raises(ValueError, match=variable):
+        EventProcessor.from_environment()
+
+
 def test_custom_thresholds_override_defaults() -> None:
     processor = EventProcessor({"temperature": (10.0, 20.0)})
 
