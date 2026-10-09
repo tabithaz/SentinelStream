@@ -1,9 +1,13 @@
-from app.main import quality_summary
+from fastapi.testclient import TestClient
+
+from app.main import app
 
 
 def test_quality_summary_returns_valid_contract() -> None:
-    body = quality_summary()
+    response = TestClient(app).get("/events/quality-summary")
+    body = response.json()
 
+    assert response.status_code == 200
     assert set(body) == {
         "received",
         "accepted",

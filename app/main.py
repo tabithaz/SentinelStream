@@ -57,6 +57,25 @@ ingestion_rate_limiter = SlidingWindowRateLimiter()
 ingestion_concurrency_limiter = InFlightLimiter()
 
 
+def _conditional_json(request: Request, content: dict) -> Response:
+    """Return a stable ETag and avoid retransmitting unchanged JSON."""
+    representation = json.dumps(
+        content,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    etag = f'"{hashlib.sha256(representation).hexdigest()}"'
+    headers = {"ETag": etag, "Cache-Control": "no-cache"}
+    if request.headers.get("If-None-Match") == etag:
+        return Response(status_code=304, headers=headers)
+    return Response(
+        content=representation,
+        media_type="application/json",
+        headers=headers,
+    )
+
+
 def _drain_marker_path() -> Path | None:
     configured = os.getenv("SENTINELSTREAM_DRAIN_MARKER", "").strip()
     return Path(configured) if configured else None
@@ -823,7 +842,7 @@ def replace_anomaly_thresholds(
 
 
 @app.get("/events/health-summary")
-def health_summary() -> dict:
+def health_summary(request: Request) -> Response:
     sources = processor.ranked_sources(limit=100)
     counts = {"healthy": 0, "watch": 0, "critical": 0}
     for source in sources:
@@ -831,18 +850,18 @@ def health_summary() -> dict:
 
     monitored = len(sources)
     degraded = counts["watch"] + counts["critical"]
-    return {
+    return _conditional_json(request, {
         "sources_monitored": monitored,
         "healthy_sources": counts["healthy"],
         "watch_sources": counts["watch"],
         "critical_sources": counts["critical"],
         "degraded_sources": degraded,
         "degraded_share": degraded / monitored if monitored else 0.0,
-    }
+    })
 
 
 @app.get("/events/quality-summary")
-def quality_summary() -> dict:
+def quality_summary(request: Request) -> Response:
     stats = processor.stats()
     received = stats["processed"] + stats["duplicates"]
     duplicate_rate = stats["duplicates"] / received if received else 0.0
@@ -855,7 +874,7 @@ def quality_summary() -> dict:
     else:
         quality = "healthy"
 
-    return {
+    return _conditional_json(request, {
         "received": received,
         "accepted": stats["processed"],
         "duplicates": stats["duplicates"],
@@ -864,11 +883,11 @@ def quality_summary() -> dict:
         "duplicate_rate": duplicate_rate,
         "anomaly_rate": anomaly_rate,
         "quality": quality,
-    }
+    })
 
 
 @app.get("/events/reliability")
-def stream_reliability() -> dict:
+def stream_reliability(request: Request) -> Response:
     stats = processor.stats()
     received = stats["processed"] + stats["duplicates"]
     duplicate_rate = stats["duplicates"] / received if received else 0.0
@@ -877,25 +896,29 @@ def stream_reliability() -> dict:
         duplicate_rate=duplicate_rate,
         out_of_order_rate=stats["out_of_order_rate"],
     )
-    return {
+    return _conditional_json(request, {
         **result,
         "anomaly_rate": stats["anomaly_rate"],
         "duplicate_rate": duplicate_rate,
         "out_of_order_rate": stats["out_of_order_rate"],
-    }
+    })
 
 
 @app.get("/events/slo")
 def event_reliability_slo(
+    request: Request,
     target_percent: float = Query(default=99.0, gt=0, le=100),
     window_events: int = Query(default=1000, ge=1, le=1000),
-) -> dict:
+) -> Response:
     """Report event reliability and remaining error budget for a recent window."""
     events = processor.recent_events(limit=window_events)
-    return summarize_event_slo(
-        events,
-        target_percent=target_percent,
-        window_events=window_events,
+    return _conditional_json(
+        request,
+        summarize_event_slo(
+            events,
+            target_percent=target_percent,
+            window_events=window_events,
+        ),
     )
 
 
@@ -953,5 +976,5 @@ def recovery_summary(
 
 
 @app.get("/events/stats")
-def event_stats() -> dict:
-    return processor.stats()
+def event_stats(request: Request) -> Response:
+    return _conditional_json(request, processor.stats())

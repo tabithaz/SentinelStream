@@ -33,6 +33,7 @@ The project focuses on the processing and observability layer that would sit beh
 - Throughput, burst, capacity, backlog, and partition-skew diagnostics
 - Reliability, retry, checkpoint, replay, dead-letter, and recovery analysis modules
 - Recent-window reliability SLOs with explicit error-budget burn and exhaustion status
+- ETag revalidation for operational summaries and efficient dashboard polling
 - Thread-safe batch processing with concurrency regression tests
 - FastAPI request validation and interactive OpenAPI documentation
 - Prometheus-compatible processing counters and health ratios
@@ -134,6 +135,12 @@ The Prometheus endpoint includes bounded HTTP RED metrics labeled by FastAPI
 route templates rather than raw URLs. This exposes request totals by status,
 cumulative latency histograms, duration totals, and in-flight work without
 creating unbounded labels from event IDs or correlation IDs.
+
+Operational summary endpoints (`/events/stats`, `/events/health-summary`,
+`/events/quality-summary`, `/events/reliability`, and `/events/slo`) return
+stable ETags with `Cache-Control: no-cache`. Polling clients can send
+`If-None-Match` and receive HTTP 304 when the summary has not changed, avoiding
+repeated response bodies while still revalidating every request.
 
 ## Run on Kubernetes
 
