@@ -70,3 +70,35 @@ def test_readiness_uses_safe_default_for_invalid_configuration(monkeypatch) -> N
 
     assert response.status_code == 200
     assert response.json()["cardinality_threshold_percent"] == 90.0
+
+
+def test_readiness_fails_while_instance_is_draining(tmp_path, monkeypatch) -> None:
+    marker = tmp_path / "draining"
+    marker.touch()
+    monkeypatch.setenv("SENTINELSTREAM_DRAIN_MARKER", str(marker))
+
+    response = TestClient(main.app).get("/ready")
+
+    assert response.status_code == 503
+    assert response.headers["retry-after"] == "5"
+    assert response.json() == {
+        "status": "not_ready",
+        "service": "sentinelstream",
+        "reason": "draining",
+    }
+
+
+def test_readiness_ignores_configured_marker_until_it_exists(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(main, "processor", EventProcessor())
+    monkeypatch.setenv(
+        "SENTINELSTREAM_DRAIN_MARKER",
+        str(tmp_path / "not-created"),
+    )
+
+    response = TestClient(main.app).get("/ready")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "ready"

@@ -57,6 +57,11 @@ ingestion_rate_limiter = SlidingWindowRateLimiter()
 ingestion_concurrency_limiter = InFlightLimiter()
 
 
+def _drain_marker_path() -> Path | None:
+    configured = os.getenv("SENTINELSTREAM_DRAIN_MARKER", "").strip()
+    return Path(configured) if configured else None
+
+
 def _ingestion_rate_limit() -> int:
     configured = os.getenv("SENTINELSTREAM_INGEST_RATE_LIMIT", "0")
     try:
@@ -317,6 +322,18 @@ def health() -> dict[str, str]:
 @app.get("/ready")
 def readiness() -> JSONResponse:
     """Fail closed before bounded cardinality prevents full-fidelity monitoring."""
+    drain_marker = _drain_marker_path()
+    if drain_marker is not None and drain_marker.exists():
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "not_ready",
+                "service": "sentinelstream",
+                "reason": "draining",
+            },
+            headers={"Retry-After": "5"},
+        )
+
     cardinality = processor.stats()["cardinality"]
     threshold = _readiness_cardinality_percent()
     checks = {}

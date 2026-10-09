@@ -30,6 +30,15 @@ def test_deployment_has_zero_downtime_rollout_and_resource_budgets():
     assert "memory: 512Mi" in MANIFEST
 
 
+def test_deployment_drains_before_termination():
+    assert "terminationGracePeriodSeconds: 30" in MANIFEST
+    assert "SENTINELSTREAM_DRAIN_MARKER" in MANIFEST
+    assert "touch /tmp/sentinelstream-draining && sleep 10" in MANIFEST
+    assert "lifecycle:\n            preStop:" in MANIFEST
+    assert "mountPath: /tmp" in MANIFEST
+    assert "emptyDir:" in MANIFEST
+
+
 def test_deployment_spreads_replicas_across_zones_and_hosts():
     assert "topologySpreadConstraints:" in MANIFEST
     assert "topologyKey: topology.kubernetes.io/zone" in MANIFEST

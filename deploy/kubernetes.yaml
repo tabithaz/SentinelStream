@@ -68,6 +68,8 @@ spec:
             - name: http
               containerPort: 8000
           env:
+            - name: SENTINELSTREAM_DRAIN_MARKER
+              value: /tmp/sentinelstream-draining
             - name: SENTINELSTREAM_READINESS_CARDINALITY_PERCENT
               value: "90"
             - name: SENTINELSTREAM_MAX_INGESTION_BYTES
@@ -92,6 +94,16 @@ spec:
             periodSeconds: 5
             timeoutSeconds: 2
             failureThreshold: 2
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - touch /tmp/sentinelstream-draining && sleep 10
+          volumeMounts:
+            - name: runtime
+              mountPath: /tmp
           resources:
             requests:
               cpu: 100m
@@ -99,6 +111,10 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
+      volumes:
+        - name: runtime
+          emptyDir:
+            sizeLimit: 16Mi
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget
