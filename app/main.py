@@ -515,8 +515,19 @@ async def replay_events(request: Request) -> dict:
             )
         try:
             record = json.loads(line)
-            events.append(TelemetryEvent.model_validate(record))
-        except (json.JSONDecodeError, ValidationError) as error:
+            if not isinstance(record, dict):
+                raise ValueError("event must be a JSON object")
+            event_record = dict(record)
+            for derived_field in (
+                "event_id",
+                "accepted",
+                "duplicate",
+                "anomaly",
+                "out_of_order",
+            ):
+                event_record.pop(derived_field, None)
+            events.append(TelemetryEvent.model_validate(event_record))
+        except (json.JSONDecodeError, ValidationError, ValueError) as error:
             raise HTTPException(
                 status_code=422,
                 detail=f"replay line {line_number}: invalid telemetry event",

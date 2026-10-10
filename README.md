@@ -14,6 +14,7 @@ The project focuses on the processing and observability layer that would sit beh
 - Optional concurrent-ingestion bulkhead with fail-fast overload signaling
 - Configurable request-body limits for ingestion resource protection
 - Rejection of non-finite readings and blank stream identifiers before state mutation
+- Fail-closed event and threshold schemas that reject unknown producer fields
 - UTC timestamp normalization and out-of-order detection
 - Configurable metric thresholds and anomaly classification
 - Versioned runtime threshold updates with optimistic concurrency control

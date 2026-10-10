@@ -1,9 +1,11 @@
 from datetime import datetime, timezone
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class TelemetryEvent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     source: str = Field(min_length=1, max_length=100)
     metric: str = Field(min_length=1, max_length=100)
     correlation_id: str | None = Field(default=None, min_length=1, max_length=100)
@@ -26,6 +28,8 @@ class TelemetryEvent(BaseModel):
 
 
 class ThresholdBounds(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     minimum: float = Field(allow_inf_nan=False)
     maximum: float = Field(allow_inf_nan=False)
 
@@ -37,6 +41,8 @@ class ThresholdBounds(BaseModel):
 
 
 class ThresholdConfiguration(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     thresholds: dict[str, ThresholdBounds] = Field(min_length=1, max_length=100)
 
     @model_validator(mode="after")
