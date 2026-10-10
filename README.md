@@ -40,6 +40,7 @@ The project focuses on the processing and observability layer that would sit beh
 - Prometheus RED metrics for HTTP request rate, errors, latency, and in-flight work
 - Fail-closed Kubernetes readiness checks with bounded-cardinality headroom
 - Highly available Kubernetes deployment with hardened pod security and zero-downtime rollouts
+- Least-privilege Kubernetes identity without API-token or service-link injection
 - Failure-domain-aware Kubernetes placement across zones and hosts
 - Readiness-aware graceful pod draining during shutdown and rolling updates
 - CPU- and memory-aware Kubernetes autoscaling with scale-down stabilization
@@ -148,6 +149,9 @@ The deployment manifest starts with two replicas behind a ClusterIP service and
 uses separate startup, liveness, and readiness probes. It also sets CPU and
 memory budgets, drops Linux capabilities, uses a read-only root filesystem, and
 keeps one replica available during voluntary disruptions and rolling updates.
+Pods run under a dedicated ServiceAccount with no RBAC grants. Automatic API
+token mounting and legacy service-link environment variables are disabled,
+reducing unnecessary cluster credentials and environment metadata.
 Topology spread constraints direct replicas across availability zones and nodes
 while allowing development and single-zone clusters to schedule available capacity.
 An `autoscaling/v2` HPA scales the deployment from 2 to 10 replicas at 70% CPU

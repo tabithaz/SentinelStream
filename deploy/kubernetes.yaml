@@ -1,4 +1,12 @@
 apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sentinelstream
+  labels:
+    app.kubernetes.io/name: sentinelstream
+automountServiceAccountToken: false
+---
+apiVersion: v1
 kind: Service
 metadata:
   name: sentinelstream
@@ -33,6 +41,9 @@ spec:
       labels:
         app.kubernetes.io/name: sentinelstream
     spec:
+      serviceAccountName: sentinelstream
+      automountServiceAccountToken: false
+      enableServiceLinks: false
       terminationGracePeriodSeconds: 30
       topologySpreadConstraints:
         - maxSkew: 1

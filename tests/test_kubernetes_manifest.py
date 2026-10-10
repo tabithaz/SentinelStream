@@ -4,13 +4,25 @@ from pathlib import Path
 MANIFEST = (Path(__file__).parents[1] / "deploy" / "kubernetes.yaml").read_text()
 
 
-def test_manifest_provisions_service_deployment_disruption_budget_and_autoscaler():
+def test_manifest_provisions_identity_service_deployment_and_resilience_resources():
+    assert "kind: ServiceAccount" in MANIFEST
     assert "kind: Service" in MANIFEST
     assert "kind: Deployment" in MANIFEST
     assert "kind: PodDisruptionBudget" in MANIFEST
     assert "kind: HorizontalPodAutoscaler" in MANIFEST
     assert "replicas: 2" in MANIFEST
     assert "minAvailable: 1" in MANIFEST
+
+
+def test_deployment_uses_a_least_privilege_pod_identity():
+    service_account = MANIFEST.split("kind: ServiceAccount", 1)[1].split("---", 1)[0]
+    deployment = MANIFEST.split("kind: Deployment", 1)[1].split("---", 1)[0]
+
+    assert "name: sentinelstream" in service_account
+    assert "automountServiceAccountToken: false" in service_account
+    assert "serviceAccountName: sentinelstream" in deployment
+    assert "automountServiceAccountToken: false" in deployment
+    assert "enableServiceLinks: false" in deployment
 
 
 def test_deployment_uses_distinct_liveness_and_readiness_probes():
