@@ -51,6 +51,11 @@ def test_deployment_drains_before_termination():
     assert "emptyDir:" in MANIFEST
 
 
+def test_deployment_bounds_producer_clock_skew():
+    assert "name: SENTINELSTREAM_MAX_FUTURE_SKEW_SECONDS" in MANIFEST
+    assert 'value: "300"' in MANIFEST
+
+
 def test_deployment_spreads_replicas_across_zones_and_hosts():
     assert "topologySpreadConstraints:" in MANIFEST
     assert "topologyKey: topology.kubernetes.io/zone" in MANIFEST

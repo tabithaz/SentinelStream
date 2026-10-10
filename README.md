@@ -10,6 +10,7 @@ The project focuses on the processing and observability layer that would sit beh
 - Bounded producer idempotency keys for safe single and batch retries
 - Optional constant-time API-key authentication for event ingestion
 - Optional bounded per-client ingestion rate limiting with retry guidance
+- Configurable future-timestamp rejection that protects stream ordering state
 - Optional concurrent-ingestion bulkhead with fail-fast overload signaling
 - Configurable request-body limits for ingestion resource protection
 - Rejection of non-finite readings and blank stream identifiers before state mutation
@@ -109,6 +110,11 @@ NDJSON parsing. Set `SENTINELSTREAM_MAX_INGESTION_BYTES` to a positive byte
 limit when a deployment needs a different ceiling. Oversized requests receive
 HTTP 413 and `X-Max-Request-Bytes`; rejected payloads cannot mutate stream state.
 The replay endpoint keeps its existing 1 MiB ceiling when the general limit is raised.
+
+Events more than five minutes in the future are rejected before stream state is
+mutated, preventing a misconfigured producer clock from making valid events appear
+out of order. Set `SENTINELSTREAM_MAX_FUTURE_SKEW_SECONDS` to a non-negative
+number of seconds; use `0` only when future-skew protection must be disabled.
 
 Production memory bounds are configurable without rebuilding the service. Set
 `SENTINELSTREAM_HISTORY_SIZE`, `SENTINELSTREAM_DEDUPLICATION_SIZE`,

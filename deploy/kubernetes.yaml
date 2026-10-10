@@ -85,6 +85,8 @@ spec:
               value: "90"
             - name: SENTINELSTREAM_MAX_INGESTION_BYTES
               value: "1048576"
+            - name: SENTINELSTREAM_MAX_FUTURE_SKEW_SECONDS
+              value: "300"
           startupProbe:
             httpGet:
               path: /health

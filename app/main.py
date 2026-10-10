@@ -1,6 +1,6 @@
 import csv
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import hashlib
 import hmac
 from io import StringIO
@@ -52,6 +52,7 @@ REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
 MAX_REPLAY_BYTES = 1024 * 1024
 MAX_REPLAY_EVENTS = 1000
 DEFAULT_MAX_INGESTION_BYTES = 1024 * 1024
+DEFAULT_MAX_FUTURE_SKEW_SECONDS = 300.0
 DEFAULT_READINESS_CARDINALITY_PERCENT = 90.0
 ingestion_rate_limiter = SlidingWindowRateLimiter()
 ingestion_concurrency_limiter = InFlightLimiter()
@@ -109,6 +110,34 @@ def _max_concurrent_ingestion() -> int:
     except ValueError:
         return 0
     return max(0, limit)
+
+
+def _max_future_skew_seconds() -> float:
+    configured = os.getenv(
+        "SENTINELSTREAM_MAX_FUTURE_SKEW_SECONDS",
+        str(DEFAULT_MAX_FUTURE_SKEW_SECONDS),
+    )
+    try:
+        maximum = float(configured)
+    except ValueError:
+        return DEFAULT_MAX_FUTURE_SKEW_SECONDS
+    if not math.isfinite(maximum) or maximum < 0:
+        return DEFAULT_MAX_FUTURE_SKEW_SECONDS
+    return maximum
+
+
+def _validate_event_timestamps(events: list[TelemetryEvent]) -> None:
+    """Prevent future-dated events from poisoning per-stream ordering state."""
+    maximum = _max_future_skew_seconds()
+    if maximum == 0:
+        return
+    latest_allowed = datetime.now(timezone.utc) + timedelta(seconds=maximum)
+    if any(event.timestamp > latest_allowed for event in events):
+        raise HTTPException(
+            status_code=422,
+            detail="event timestamp exceeds maximum future clock skew",
+            headers={"X-Max-Future-Skew-Seconds": str(maximum)},
+        )
 
 
 def _readiness_cardinality_percent() -> float:
@@ -413,6 +442,7 @@ def process_event(
         ),
     ] = None,
 ) -> Response:
+    _validate_event_timestamps([event])
     if idempotency_key is None:
         return JSONResponse(content=processor.process(event))
     try:
@@ -441,6 +471,7 @@ def process_event_batch(
         ),
     ] = None,
 ) -> Response:
+    _validate_event_timestamps(events)
     if idempotency_key is None:
         return JSONResponse(content=processor.process_many(events))
     try:
@@ -491,6 +522,7 @@ async def replay_events(request: Request) -> dict:
                 detail=f"replay line {line_number}: invalid telemetry event",
             ) from error
 
+    _validate_event_timestamps(events)
     events.sort(key=lambda event: event.timestamp)
     return processor.process_many(events)
 
