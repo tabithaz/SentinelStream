@@ -42,6 +42,14 @@ def test_deployment_has_zero_downtime_rollout_and_resource_budgets():
     assert "memory: 512Mi" in MANIFEST
 
 
+def test_deployment_bounds_and_verifies_rollout_progress():
+    deployment = MANIFEST.split("kind: Deployment", 1)[1].split("---", 1)[0]
+
+    assert "minReadySeconds: 10" in deployment
+    assert "progressDeadlineSeconds: 300" in deployment
+    assert "revisionHistoryLimit: 5" in deployment
+
+
 def test_deployment_drains_before_termination():
     assert "terminationGracePeriodSeconds: 30" in MANIFEST
     assert "SENTINELSTREAM_DRAIN_MARKER" in MANIFEST

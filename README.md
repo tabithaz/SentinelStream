@@ -156,6 +156,10 @@ The deployment manifest starts with two replicas behind a ClusterIP service and
 uses separate startup, liveness, and readiness probes. It also sets CPU and
 memory budgets, drops Linux capabilities, uses a read-only root filesystem, and
 keeps one replica available during voluntary disruptions and rolling updates.
+New replicas must remain ready for ten seconds before they count as available,
+and Kubernetes marks a rollout failed if it cannot make progress within five
+minutes. Deployment history is capped at five revisions to preserve practical
+rollback coverage without accumulating unbounded ReplicaSets.
 Pods run under a dedicated ServiceAccount with no RBAC grants. Automatic API
 token mounting and legacy service-link environment variables are disabled,
 reducing unnecessary cluster credentials and environment metadata.
