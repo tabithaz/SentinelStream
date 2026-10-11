@@ -117,6 +117,7 @@ def test_invalid_threshold_sets_are_rejected_atomically(monkeypatch) -> None:
             "Temperature": {"minimum": 0, "maximum": 1},
             "temperature": {"minimum": 0, "maximum": 2},
         },
+        {"temperature\nspoof": {"minimum": 0, "maximum": 1}},
     ):
         response = client.put(
             "/events/thresholds",

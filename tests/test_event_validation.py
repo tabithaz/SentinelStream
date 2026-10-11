@@ -79,3 +79,25 @@ def test_batch_rejects_blank_identifier_atomically() -> None:
 
     assert response.status_code == 422
     assert main.processor.stats()["processed"] == 0
+
+
+@pytest.mark.parametrize("field", ["source", "metric", "correlation_id"])
+@pytest.mark.parametrize("unsafe", ["line\nbreak", "tab\tbreak", "escape\x1bbreak"])
+def test_model_rejects_control_characters_in_identifiers(
+    field: str,
+    unsafe: str,
+) -> None:
+    with pytest.raises(ValidationError, match="cannot contain control characters"):
+        TelemetryEvent.model_validate(payload(**{field: unsafe}))
+
+
+def test_batch_rejects_control_character_atomically() -> None:
+    main.processor = EventProcessor()
+    client = TestClient(main.app)
+    response = client.post(
+        "/events/batch",
+        json=[payload(), payload(source="sensor\nspoof", timestamp="2026-09-25T12:00:01Z")],
+    )
+
+    assert response.status_code == 422
+    assert main.processor.stats()["processed"] == 0

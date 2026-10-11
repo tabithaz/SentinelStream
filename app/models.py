@@ -1,6 +1,13 @@
 from datetime import datetime, timezone
+import unicodedata
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+def _reject_control_characters(value: str, field_name: str) -> str:
+    if any(unicodedata.category(character) == "Cc" for character in value):
+        raise ValueError(f"{field_name} cannot contain control characters")
+    return value
 
 
 class TelemetryEvent(BaseModel):
@@ -16,7 +23,10 @@ class TelemetryEvent(BaseModel):
     @classmethod
     def normalize_identifier(cls, value: object) -> object:
         if isinstance(value, str):
-            return value.strip()
+            normalized = value.strip()
+            if normalized:
+                _reject_control_characters(value, "identifier")
+            return normalized
         return value
 
     @field_validator("timestamp")
@@ -54,6 +64,7 @@ class ThresholdConfiguration(BaseModel):
                 raise ValueError("metric names must not be blank")
             if len(name) > 100:
                 raise ValueError("metric names cannot exceed 100 characters")
+            _reject_control_characters(metric, "metric names")
             if name in normalized:
                 raise ValueError("metric names must be unique ignoring case")
             normalized[name] = bounds
