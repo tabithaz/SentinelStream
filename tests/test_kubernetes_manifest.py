@@ -7,11 +7,23 @@ MANIFEST = (Path(__file__).parents[1] / "deploy" / "kubernetes.yaml").read_text(
 def test_manifest_provisions_identity_service_deployment_and_resilience_resources():
     assert "kind: ServiceAccount" in MANIFEST
     assert "kind: Service" in MANIFEST
+    assert "kind: NetworkPolicy" in MANIFEST
     assert "kind: Deployment" in MANIFEST
     assert "kind: PodDisruptionBudget" in MANIFEST
     assert "kind: HorizontalPodAutoscaler" in MANIFEST
     assert "replicas: 2" in MANIFEST
     assert "minAvailable: 1" in MANIFEST
+
+
+def test_network_policy_limits_ingress_to_the_api_port_and_approved_sources():
+    policy = MANIFEST.split("kind: NetworkPolicy", 1)[1].split("---", 1)[0]
+
+    assert "app.kubernetes.io/name: sentinelstream" in policy
+    assert "policyTypes:\n    - Ingress" in policy
+    assert "podSelector: {}" in policy
+    assert "networking.sentinelstream.io/ingress: allowed" in policy
+    assert "protocol: TCP\n          port: 8000" in policy
+    assert "Egress" not in policy
 
 
 def test_deployment_uses_a_least_privilege_pod_identity():

@@ -163,6 +163,16 @@ rollback coverage without accumulating unbounded ReplicaSets.
 Pods run under a dedicated ServiceAccount with no RBAC grants. Automatic API
 token mounting and legacy service-link environment variables are disabled,
 reducing unnecessary cluster credentials and environment metadata.
+An ingress NetworkPolicy limits traffic to TCP port 8000 from pods in the same
+namespace or from namespaces explicitly labeled
+`networking.sentinelstream.io/ingress=allowed`. Egress remains unrestricted so
+the service can reach configured external integrations. Label an ingress
+controller namespace before applying the manifest when it runs separately:
+
+```bash
+kubectl label namespace ingress-nginx networking.sentinelstream.io/ingress=allowed
+```
+
 Topology spread constraints direct replicas across availability zones and nodes
 while allowing development and single-zone clusters to schedule available capacity.
 An `autoscaling/v2` HPA scales the deployment from 2 to 10 replicas at 70% CPU
