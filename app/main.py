@@ -1,3 +1,4 @@
+import base64
 import csv
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
@@ -67,6 +68,12 @@ SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
 }
+
+
+def _content_digest(content: bytes) -> str:
+    """Return an RFC 9530 SHA-256 digest for a response or upload body."""
+    digest = hashlib.sha256(content).digest()
+    return f"sha-256=:{base64.b64encode(digest).decode('ascii')}:"
 
 
 def _conditional_json(request: Request, content: dict) -> Response:
@@ -517,6 +524,15 @@ async def replay_events(request: Request) -> dict:
     body = await request.body()
     if len(body) > MAX_REPLAY_BYTES:
         raise HTTPException(status_code=413, detail="replay payload exceeds 1 MiB")
+    supplied_digest = request.headers.get("content-digest")
+    if supplied_digest is not None and not hmac.compare_digest(
+        supplied_digest.strip(),
+        _content_digest(body),
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="replay content digest does not match payload",
+        )
     try:
         lines = body.decode("utf-8").splitlines()
     except UnicodeDecodeError as error:
@@ -698,12 +714,13 @@ def export_events(
     content = "".join(
         json.dumps(event, separators=(",", ":"), allow_nan=False) + "\n"
         for event in events
-    )
+    ).encode("utf-8")
     return Response(
         content=content,
         media_type="application/x-ndjson",
         headers={
             "Content-Disposition": 'attachment; filename="sentinelstream-events.ndjson"',
+            "Content-Digest": _content_digest(content),
             "X-Event-Count": str(len(events)),
         },
     )
@@ -753,11 +770,13 @@ def export_events_csv(
                 for column in columns
             }
         )
+    content = output.getvalue().encode("utf-8")
     return Response(
-        content=output.getvalue(),
+        content=content,
         media_type="text/csv",
         headers={
             "Content-Disposition": 'attachment; filename="sentinelstream-events.csv"',
+            "Content-Digest": _content_digest(content),
             "X-Event-Count": str(len(events)),
         },
     )

@@ -1,4 +1,6 @@
+import base64
 import csv
+import hashlib
 from io import StringIO
 
 from fastapi.testclient import TestClient
@@ -48,6 +50,8 @@ def test_csv_export_is_filtered_bounded_and_newest_first() -> None:
         'attachment; filename="sentinelstream-events.csv"'
     )
     assert response.headers["x-event-count"] == "1"
+    expected_digest = base64.b64encode(hashlib.sha256(response.content).digest()).decode()
+    assert response.headers["content-digest"] == f"sha-256=:{expected_digest}:"
     exported = rows(response)[0]
     assert exported == {
         "event_id": exported["event_id"],

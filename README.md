@@ -407,7 +407,8 @@ current usage, and overflow event, anomaly, and ordering counts.
 Export up to 1,000 recent records for incident analysis or replay tooling. The
 same metric, source, and anomaly filters available for recent history are
 supported, along with inclusive ISO 8601 `since` and `until` timestamps. Each
-response includes an `X-Event-Count` header:
+response includes an `X-Event-Count` header and an RFC 9530 `Content-Digest`
+header containing a SHA-256 checksum of the downloaded artifact:
 
 ```bash
 curl -OJ "http://127.0.0.1:8000/events/export?source=sensor-alpha&anomalies_only=true"
@@ -426,9 +427,11 @@ curl -X POST http://127.0.0.1:8000/events/replay \
   --data-binary @sentinelstream-events.ndjson
 ```
 
-Replay uploads are limited to 1 MiB and 1,000 events. Every line is parsed and
-validated before processing begins, so malformed input cannot partially mutate
-stream state. Valid events are replayed in timestamp order because exports are
+Replay uploads are limited to 1 MiB and 1,000 events. Forwarding an export's
+`Content-Digest` header makes replay reject a corrupted or altered payload
+before parsing or changing stream state. Every line is parsed and validated
+before processing begins, so malformed input cannot partially mutate stream
+state. Valid events are replayed in timestamp order because exports are
 newest-first.
 
 The `/metrics` endpoint uses Prometheus text exposition format and reports received, accepted, duplicate, anomalous, and out-of-order event totals along with anomaly ratios and monitored-source counts. The endpoint intentionally avoids source labels so untrusted source names cannot create unbounded metric cardinality.

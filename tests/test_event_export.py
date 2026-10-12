@@ -1,3 +1,5 @@
+import base64
+import hashlib
 import json
 
 from fastapi.testclient import TestClient
@@ -40,6 +42,8 @@ def test_export_returns_filtered_ndjson() -> None:
         'attachment; filename="sentinelstream-events.ndjson"'
     )
     assert response.headers["x-event-count"] == "1"
+    expected_digest = base64.b64encode(hashlib.sha256(response.content).digest()).decode()
+    assert response.headers["content-digest"] == f"sha-256=:{expected_digest}:"
     records = [json.loads(line) for line in response.text.splitlines()]
     assert records[0]["source"] == "sensor-alpha"
     assert records[0]["value"] == 150.0

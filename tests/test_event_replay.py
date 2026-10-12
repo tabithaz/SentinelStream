@@ -39,7 +39,10 @@ def test_exported_events_can_be_replayed() -> None:
     replayed = client.post(
         "/events/replay",
         content=exported.content,
-        headers={"Content-Type": "application/x-ndjson"},
+        headers={
+            "Content-Type": "application/x-ndjson",
+            "Content-Digest": exported.headers["content-digest"],
+        },
     )
 
     assert original.status_code == 200
@@ -51,6 +54,26 @@ def test_exported_events_can_be_replayed() -> None:
     original_ids = {item["event_id"] for item in original.json()["results"]}
     replayed_ids = {item["event_id"] for item in replayed.json()["results"]}
     assert replayed_ids == original_ids
+
+
+def test_replay_rejects_mismatched_digest_atomically(
+    isolated_processor: EventProcessor,
+) -> None:
+    exported = client.get("/events/export")
+    payload = encode_ndjson([event("sensor-a", 72.0, 0)])
+
+    response = client.post(
+        "/events/replay",
+        content=payload,
+        headers={
+            "Content-Type": "application/x-ndjson",
+            "Content-Digest": exported.headers["content-digest"],
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "replay content digest does not match payload"
+    assert isolated_processor.stats()["processed"] == 0
 
 
 def test_invalid_replay_is_atomic(isolated_processor: EventProcessor) -> None:
