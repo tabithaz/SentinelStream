@@ -63,6 +63,7 @@ def render_prometheus_metrics(
     stats: dict,
     requests: dict | None = None,
     bulkhead: dict | None = None,
+    provenance: dict[str, str] | None = None,
 ) -> str:
     received = stats["processed"] + stats["duplicates"]
     metrics = (
@@ -123,6 +124,16 @@ def render_prometheus_metrics(
     )
 
     lines: list[str] = []
+    if provenance is not None:
+        labels = ",".join(
+            f'{name}="{_label(value)}"'
+            for name, value in sorted(provenance.items())
+        )
+        lines.extend((
+            "# HELP sentinelstream_build_info Runtime release and source revision metadata.",
+            "# TYPE sentinelstream_build_info gauge",
+            f"sentinelstream_build_info{{{labels}}} 1",
+        ))
     for name, help_text, metric_type, value in metrics:
         lines.extend(
             (

@@ -38,12 +38,13 @@ from app.processor import (
     ThresholdVersionConflictError,
 )
 from app.prometheus import RequestMetrics, render_prometheus_metrics
+from app.provenance import SERVICE_VERSION, runtime_provenance
 from app.rate_limit import SlidingWindowRateLimiter
 from app.recovery import recommend_recovery
 from app.reliability import classify_stream_reliability
 from app.slo import summarize_event_slo
 
-app = FastAPI(title="SentinelStream", version="1.4.0")
+app = FastAPI(title="SentinelStream", version=SERVICE_VERSION)
 processor = EventProcessor.from_environment()
 request_metrics = RequestMetrics()
 DASHBOARD_PATH = Path(__file__).parent / "static" / "dashboard.html"
@@ -382,7 +383,7 @@ async def validation_error_response(
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "healthy", "service": "sentinelstream"}
+    return {"status": "healthy", **runtime_provenance()}
 
 
 @app.get("/ready")
@@ -442,6 +443,7 @@ def prometheus_metrics() -> Response:
             processor.stats(),
             request_metrics.snapshot(),
             ingestion_concurrency_limiter.snapshot(_max_concurrent_ingestion()),
+            runtime_provenance(),
         ),
         media_type="text/plain; version=0.0.4",
     )

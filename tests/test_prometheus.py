@@ -27,6 +27,22 @@ def test_prometheus_renderer_exposes_empty_processor_metrics() -> None:
     assert output.endswith("\n")
 
 
+def test_prometheus_renderer_exposes_escaped_build_information() -> None:
+    output = render_prometheus_metrics(
+        EventProcessor().stats(),
+        provenance={
+            "service": "sentinelstream",
+            "version": "1.4.0",
+            "revision": 'abc"123',
+        },
+    )
+
+    assert (
+        'sentinelstream_build_info{revision="abc\\"123",service="sentinelstream",'
+        'version="1.4.0"} 1'
+    ) in output
+
+
 def test_metrics_endpoint_reports_live_processor_counters(monkeypatch) -> None:
     processor = EventProcessor()
     processor.process(event(72.4))
@@ -45,6 +61,10 @@ def test_metrics_endpoint_reports_live_processor_counters(monkeypatch) -> None:
     assert "sentinelstream_event_anomaly_ratio 0.5" in response.text
     assert "sentinelstream_sources_monitored 1" in response.text
     assert "sentinelstream_metrics_monitored 1" in response.text
+    assert (
+        'sentinelstream_build_info{revision="unknown",service="sentinelstream",'
+        'version="1.4.0"} 1'
+    ) in response.text
 
 
 def test_request_metrics_exports_bounded_red_metrics(monkeypatch) -> None:

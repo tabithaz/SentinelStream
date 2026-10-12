@@ -40,6 +40,7 @@ The project focuses on the processing and observability layer that would sit beh
 - FastAPI request validation and interactive OpenAPI documentation
 - Prometheus-compatible processing counters and health ratios
 - Prometheus RED metrics for HTTP request rate, errors, latency, and in-flight work
+- Release and source-revision provenance in health checks and Prometheus metrics
 - Fail-closed Kubernetes readiness checks with bounded-cardinality headroom
 - Highly available Kubernetes deployment with hardened pod security and zero-downtime rollouts
 - Least-privilege Kubernetes identity without API-token or service-link injection
@@ -143,6 +144,18 @@ Verify the running service:
 ```bash
 curl http://127.0.0.1:8000/health
 curl http://127.0.0.1:8000/metrics
+```
+
+Build the container with an immutable source revision so health checks and the
+`sentinelstream_build_info` metric identify the exact artifact under
+investigation. The image also records the release and revision as standard OCI
+labels. Metadata is bounded before it reaches metric labels.
+
+```bash
+docker build \
+  --build-arg RELEASE_VERSION=1.4.0 \
+  --build-arg VCS_REF="$(git rev-parse HEAD)" \
+  -t sentinelstream-api:1.4.0 .
 ```
 
 The Prometheus endpoint includes bounded HTTP RED metrics labeled by FastAPI

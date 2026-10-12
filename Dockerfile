@@ -1,7 +1,17 @@
 FROM python:3.12-slim
 
+ARG RELEASE_VERSION=1.4.0
+ARG VCS_REF=unknown
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    SENTINELSTREAM_RELEASE=${RELEASE_VERSION} \
+    SENTINELSTREAM_REVISION=${VCS_REF}
+
+LABEL org.opencontainers.image.title="SentinelStream" \
+      org.opencontainers.image.version="${RELEASE_VERSION}" \
+      org.opencontainers.image.revision="${VCS_REF}" \
+      org.opencontainers.image.source="https://github.com/tabithaz/SentinelStream"
 
 WORKDIR /app
 
