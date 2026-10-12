@@ -48,6 +48,7 @@ The project focuses on the processing and observability layer that would sit beh
 - CPU- and memory-aware Kubernetes autoscaling with scale-down stabilization
 - Request IDs and structured access logs for cross-service tracing
 - Live browser dashboard for event submission and stream-health monitoring
+- Browser security headers for API, dashboard, and error responses
 - Non-root Docker image with an application health check
 - Automated unit, API, concurrency, and container smoke tests
 
@@ -70,6 +71,11 @@ uvicorn app.main:app --reload
 ```
 
 The dashboard is available at `http://127.0.0.1:8000/dashboard`. It can submit correlated telemetry, display correlation IDs in recent events, inspect incident health across sources and metrics, and monitor a configurable reliability SLO with live error-budget burn. The API is available at `http://127.0.0.1:8000`, with interactive documentation at `http://127.0.0.1:8000/docs`.
+
+Every response includes a Content Security Policy plus permissions, referrer,
+MIME-sniffing, and frame protections. These headers also cover routing,
+validation, authentication, and rate-limit errors so rejected requests cannot
+bypass the browser-facing security baseline.
 
 Set `SENTINELSTREAM_API_KEY` to protect every event-writing endpoint. Clients
 must then send the configured secret in the `X-API-Key` header. Key comparison

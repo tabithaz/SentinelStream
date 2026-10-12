@@ -56,6 +56,16 @@ DEFAULT_MAX_FUTURE_SKEW_SECONDS = 300.0
 DEFAULT_READINESS_CARDINALITY_PERCENT = 90.0
 ingestion_rate_limiter = SlidingWindowRateLimiter()
 ingestion_concurrency_limiter = InFlightLimiter()
+SECURITY_HEADERS = {
+    "Content-Security-Policy": (
+        "base-uri 'self'; form-action 'self'; frame-ancestors 'none'; "
+        "object-src 'none'"
+    ),
+    "Permissions-Policy": "camera=(), geolocation=(), microphone=()",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+}
 
 
 def _conditional_json(request: Request, content: dict) -> Response:
@@ -307,6 +317,14 @@ async def request_trace(request: Request, call_next):
             separators=(",", ":"),
         )
     )
+    return response
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    """Harden API and dashboard responses against browser-based attacks."""
+    response = await call_next(request)
+    response.headers.update(SECURITY_HEADERS)
     return response
 
 
