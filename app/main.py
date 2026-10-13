@@ -181,12 +181,18 @@ def _rate_limit_identity(request: Request) -> str:
     return f"client:{host}"
 
 
+def _is_event_write(request: Request) -> bool:
+    return (
+        request.method in {"POST", "PUT", "PATCH", "DELETE"}
+        and request.url.path.startswith("/events")
+    )
+
+
 @app.middleware("http")
 async def protect_event_writes(request: Request, call_next):
     """Require an API key for event mutation when one is configured."""
     expected_key = os.getenv("SENTINELSTREAM_API_KEY", "")
-    is_event_write = request.method in {"POST", "PUT", "PATCH", "DELETE"}
-    if expected_key and is_event_write and request.url.path.startswith("/events"):
+    if expected_key and _is_event_write(request):
         supplied_key = request.headers.get("X-API-Key", "")
         if not supplied_key or not hmac.compare_digest(supplied_key, expected_key):
             return JSONResponse(
@@ -194,6 +200,23 @@ async def protect_event_writes(request: Request, call_next):
                 content={"detail": "valid X-API-Key required"},
                 headers={"WWW-Authenticate": "ApiKey"},
             )
+    return await call_next(request)
+
+
+@app.middleware("http")
+async def reject_event_writes_while_draining(request: Request, call_next):
+    """Prevent new mutations after a deployment starts draining this instance."""
+    drain_marker = _drain_marker_path()
+    if (
+        _is_event_write(request)
+        and drain_marker is not None
+        and drain_marker.exists()
+    ):
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "service is draining"},
+            headers={"Retry-After": "5"},
+        )
     return await call_next(request)
 
 

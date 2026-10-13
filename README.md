@@ -45,7 +45,7 @@ The project focuses on the processing and observability layer that would sit beh
 - Highly available Kubernetes deployment with hardened pod security and zero-downtime rollouts
 - Least-privilege Kubernetes identity without API-token or service-link injection
 - Failure-domain-aware Kubernetes placement across zones and hosts
-- Readiness-aware graceful pod draining during shutdown and rolling updates
+- Readiness-aware graceful pod draining that rejects new mutations during shutdown
 - CPU- and memory-aware Kubernetes autoscaling with scale-down stabilization
 - Request IDs and structured access logs for cross-service tracing
 - Live browser dashboard for event submission and stream-health monitoring
@@ -199,8 +199,10 @@ or 75% memory utilization. Scale-up can react within a minute, while a five-minu
 scale-down stabilization window prevents short traffic dips from causing churn.
 Before a pod terminates, its pre-stop hook creates a drain marker and waits ten
 seconds. The readiness endpoint immediately returns HTTP 503, allowing Kubernetes
-to remove the pod from Service endpoints before the process exits while the
-remaining termination grace period lets in-flight requests finish.
+to remove the pod from Service endpoints before the process exits. New event and
+threshold mutations receive HTTP 503 with `Retry-After: 5` during that propagation
+window, while liveness, metrics, and read-only incident endpoints remain available
+and the remaining termination grace period lets in-flight requests finish.
 
 ```bash
 kubectl apply -f deploy/kubernetes.yaml
