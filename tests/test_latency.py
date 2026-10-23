@@ -29,3 +29,15 @@ def test_critical_latency_budget():
 def test_invalid_latency_input(samples, budget):
     with pytest.raises(ValueError):
         analyze_latency(samples, budget)
+
+
+@pytest.mark.parametrize("invalid", [float("nan"), float("inf"), float("-inf"), True, "10"])
+def test_non_finite_or_non_numeric_latency_is_rejected(invalid):
+    with pytest.raises(ValueError, match="latency samples must be non-negative finite numbers"):
+        analyze_latency([1, invalid], 100)
+
+
+@pytest.mark.parametrize("invalid", [float("nan"), float("inf"), float("-inf"), True, "100"])
+def test_non_finite_or_non_numeric_budget_is_rejected(invalid):
+    with pytest.raises(ValueError, match="budget_ms must be a positive finite number"):
+        analyze_latency([1, 2], invalid)
