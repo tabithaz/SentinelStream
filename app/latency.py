@@ -1,14 +1,19 @@
+import math
+from numbers import Real
 from statistics import mean
 
 
 def analyze_latency(latencies_ms: list[float], budget_ms: float) -> dict:
     """Summarize end-to-end processing latency against an operational budget."""
+    def finite_number(value: object) -> bool:
+        return not isinstance(value, bool) and isinstance(value, Real) and math.isfinite(value)
+
+    if not finite_number(budget_ms) or budget_ms <= 0:
+        raise ValueError("budget_ms must be a positive finite number")
     if not latencies_ms:
         raise ValueError("latencies_ms must contain at least one sample")
-    if budget_ms <= 0:
-        raise ValueError("budget_ms must be positive")
-    if any(value < 0 for value in latencies_ms):
-        raise ValueError("latency samples cannot be negative")
+    if any(not finite_number(value) or value < 0 for value in latencies_ms):
+        raise ValueError("latency samples must be non-negative finite numbers")
 
     ordered = sorted(float(value) for value in latencies_ms)
     count = len(ordered)
