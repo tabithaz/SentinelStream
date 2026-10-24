@@ -1,4 +1,6 @@
 from dataclasses import dataclass
+import math
+from numbers import Real
 from statistics import mean
 
 @dataclass(frozen=True)
@@ -11,6 +13,9 @@ class PartitionSkewReport:
     status: str
 
 def analyze_partition_skew(event_counts, warning_ratio=1.75, critical_ratio=2.5):
+    for name, threshold in (("warning", warning_ratio), ("critical", critical_ratio)):
+        if isinstance(threshold, bool) or not isinstance(threshold, Real) or not math.isfinite(threshold):
+            raise ValueError(f"{name} ratio must be a finite number")
     if warning_ratio <= 1 or critical_ratio <= warning_ratio:
         raise ValueError("thresholds must satisfy 1 < warning < critical")
     if any(isinstance(v, bool) or not isinstance(v, int) or v < 0 for v in event_counts):
