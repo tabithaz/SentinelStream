@@ -19,3 +19,20 @@ def test_empty_distribution():
 def test_invalid_partition_counts(values):
     with pytest.raises(ValueError):
         analyze_partition_skew(values)
+
+
+@pytest.mark.parametrize("invalid", [float("nan"), float("inf"), float("-inf"), True, "1.75", None])
+@pytest.mark.parametrize("name", ["warning_ratio", "critical_ratio"])
+def test_invalid_skew_thresholds_rejected(invalid, name):
+    with pytest.raises(ValueError, match="ratio must be a finite number"):
+        analyze_partition_skew([1, 1, 10], **{name: invalid})
+
+
+def test_valid_custom_skew_thresholds():
+    report = analyze_partition_skew([1, 1, 8], warning_ratio=1.5, critical_ratio=3.0)
+    assert report.status == "degraded"
+
+
+def test_misordered_thresholds_rejected():
+    with pytest.raises(ValueError, match="thresholds must satisfy"):
+        analyze_partition_skew([1, 2], warning_ratio=3.0, critical_ratio=2.0)
