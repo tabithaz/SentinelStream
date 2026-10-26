@@ -1,4 +1,6 @@
+import math
 from dataclasses import dataclass
+from numbers import Real
 
 
 @dataclass(frozen=True)
@@ -11,17 +13,26 @@ class ProcessingSLOReport:
     status: str
 
 
+def _validate_finite_number(value: object, name: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, Real) or not math.isfinite(value):
+        raise ValueError(f"{name} must be a finite number")
+
+
 def analyze_processing_slo(
     latency_ms: list[float],
     slo_ms: float = 500.0,
     target_percent: float = 99.0,
 ) -> ProcessingSLOReport:
+    _validate_finite_number(slo_ms, "slo_ms")
+    _validate_finite_number(target_percent, "target_percent")
     if slo_ms <= 0:
         raise ValueError("slo_ms must be positive")
     if not 0 < target_percent < 100:
         raise ValueError("target_percent must be between 0 and 100")
-    if any(value < 0 for value in latency_ms):
-        raise ValueError("latency values cannot be negative")
+    for value in latency_ms:
+        _validate_finite_number(value, "latency")
+        if value < 0:
+            raise ValueError("latency values cannot be negative")
     if not latency_ms:
         return ProcessingSLOReport(0, 0, 0, 0.0, 0.0, "no_data")
 
