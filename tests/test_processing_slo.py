@@ -30,3 +30,28 @@ def test_invalid_settings_are_rejected():
         analyze_processing_slo([-1])
     with pytest.raises(ValueError):
         analyze_processing_slo([1], target_percent=100)
+
+
+@pytest.mark.parametrize("invalid", [float("nan"), float("inf"), float("-inf"), True, "100", None])
+def test_invalid_latencies_are_rejected(invalid):
+    with pytest.raises(ValueError, match="latency must be a finite number"):
+        analyze_processing_slo([100, invalid])
+
+
+@pytest.mark.parametrize("invalid", [float("nan"), float("inf"), float("-inf"), True, "500", None])
+def test_invalid_slo_thresholds_are_rejected(invalid):
+    with pytest.raises(ValueError, match="slo_ms must be a finite number"):
+        analyze_processing_slo([100], slo_ms=invalid)
+
+
+@pytest.mark.parametrize("invalid", [float("nan"), float("inf"), float("-inf"), True, "99", None])
+def test_invalid_target_percentages_are_rejected(invalid):
+    with pytest.raises(ValueError, match="target_percent must be a finite number"):
+        analyze_processing_slo([100], target_percent=invalid)
+
+
+def test_zero_latency_and_custom_threshold_are_supported():
+    report = analyze_processing_slo([0, 10, 20], slo_ms=10, target_percent=50)
+    assert report.within_slo == 2
+    assert report.violations == 1
+    assert report.status == "healthy"
