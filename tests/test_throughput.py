@@ -44,3 +44,22 @@ def test_analyze_throughput_rejects_invalid_input() -> None:
 
     with pytest.raises(ValueError, match="non-negative"):
         analyze_throughput([1, -1], target_per_window=10)
+
+@pytest.mark.parametrize("target", [False, True, 1.5, "10", None, float("nan"), float("inf")])
+def test_analyze_throughput_rejects_noninteger_target(target) -> None:
+    with pytest.raises(ValueError, match="integer greater than zero"):
+        analyze_throughput([1, 2], target_per_window=target)
+
+
+@pytest.mark.parametrize("count", [False, True, 1.5, "10", None, float("nan"), float("inf")])
+def test_analyze_throughput_rejects_noninteger_window_count(count) -> None:
+    with pytest.raises(ValueError, match="non-negative integers"):
+        analyze_throughput([1, count], target_per_window=10)
+
+
+def test_analyze_throughput_allows_zero_and_target_boundary() -> None:
+    result = analyze_throughput([0, 10, 11], target_per_window=10)
+
+    assert result["total_events"] == 21
+    assert result["under_target_windows"] == 1
+    assert result["health"] == "degraded"
