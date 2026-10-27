@@ -6,10 +6,17 @@ def analyze_throughput(
     target_per_window: int,
 ) -> dict:
     """Summarize stream throughput across equal-duration observation windows."""
-    if target_per_window <= 0:
-        raise ValueError("target_per_window must be greater than zero")
-    if any(count < 0 for count in window_counts):
-        raise ValueError("window counts must be non-negative")
+    if (
+        isinstance(target_per_window, bool)
+        or not isinstance(target_per_window, int)
+        or target_per_window <= 0
+    ):
+        raise ValueError("target_per_window must be an integer greater than zero")
+    if any(
+        isinstance(count, bool) or not isinstance(count, int) or count < 0
+        for count in window_counts
+    ):
+        raise ValueError("window counts must be non-negative integers")
 
     windows = len(window_counts)
     total_events = sum(window_counts)
