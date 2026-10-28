@@ -1,4 +1,6 @@
 from dataclasses import dataclass
+import math
+from numbers import Real
 
 
 @dataclass(frozen=True)
@@ -10,13 +12,29 @@ class OffsetCommitReport:
     status: str
 
 
+def _validate_percent(value: object, name: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, Real):
+        raise ValueError(f"{name} must be a finite number")
+    try:
+        numeric_value = float(value)
+    except (OverflowError, ValueError):
+        raise ValueError(f"{name} must be a finite number") from None
+    if not math.isfinite(numeric_value):
+        raise ValueError(f"{name} must be a finite number")
+    return numeric_value
+
+
 def analyze_offset_commits(
     commit_results: list[bool],
     warning_percent: float = 2.0,
     critical_percent: float = 10.0,
 ) -> OffsetCommitReport:
-    if warning_percent < 0 or critical_percent <= warning_percent:
-        raise ValueError("thresholds must satisfy 0 <= warning < critical")
+    warning_percent = _validate_percent(warning_percent, "warning_percent")
+    critical_percent = _validate_percent(critical_percent, "critical_percent")
+    if not 0 <= warning_percent < critical_percent <= 100:
+        raise ValueError("thresholds must satisfy 0 <= warning < critical <= 100")
+    if any(not isinstance(result, bool) for result in commit_results):
+        raise ValueError("commit results must be booleans")
     if not commit_results:
         return OffsetCommitReport(0, 0, 0.0, 0, "no_data")
 
