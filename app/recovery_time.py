@@ -45,9 +45,10 @@ def analyze_consumer_recovery(
     else:
         status = "healthy"
 
+    average = math.fsum(value / len(recovery_seconds) for value in recovery_seconds)
     return RecoveryTimeReport(
         recoveries=len(recovery_seconds),
-        average_seconds=round(sum(recovery_seconds) / len(recovery_seconds), 2),
+        average_seconds=round(average, 2),
         p95_seconds=round(sorted_durations[p95_index], 2),
         worst_seconds=round(sorted_durations[-1], 2),
         slow_recoveries=slow,

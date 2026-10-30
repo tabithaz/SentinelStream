@@ -57,3 +57,19 @@ def test_invalid_target_thresholds_are_rejected(target):
 def test_invalid_critical_rate_thresholds_are_rejected(critical_rate):
     with pytest.raises(ValueError):
         analyze_consumer_recovery([1], critical_rate_percent=critical_rate)
+
+
+@pytest.mark.parametrize(
+    ("durations", "expected_average"),
+    [
+        ([1e308, 1e308], 1e308),
+        ([1e308, 1e308, 0.0], (1e308 / 3) * 2),
+        ([1e308, 0.0, 0.0, 0.0], 2.5e307),
+    ],
+)
+def test_large_finite_durations_keep_average_finite(durations, expected_average):
+    report = analyze_consumer_recovery(durations, target_seconds=1e308)
+    assert math.isfinite(report.average_seconds)
+    assert report.average_seconds == pytest.approx(expected_average)
+    assert report.worst_seconds == 1e308
+    assert report.status == "healthy"
