@@ -54,3 +54,30 @@ def test_invalid_offsets_are_rejected():
         analyze_consumer_lag([10], [11])
     with pytest.raises(ValueError):
         analyze_consumer_lag([10, 20], [5])
+
+
+@pytest.mark.parametrize("invalid", [True, False, 1.5, float("nan"), float("inf"), "10", None])
+@pytest.mark.parametrize("position", ["produced", "consumed"])
+def test_non_integer_offsets_are_rejected(invalid, position):
+    produced = [10, invalid] if position == "produced" else [10, 20]
+    consumed = [5, 10] if position == "produced" else [5, invalid]
+    with pytest.raises(ValueError, match="offsets must be non-negative integers"):
+        analyze_consumer_lag(produced, consumed)
+
+
+@pytest.mark.parametrize("invalid", [True, False, 1.5, float("nan"), float("inf"), "10", None, -1])
+@pytest.mark.parametrize("name", ["warning_lag", "critical_lag"])
+def test_invalid_lag_thresholds_are_rejected(invalid, name):
+    with pytest.raises(ValueError, match=f"{name} must be a non-negative integer"):
+        analyze_consumer_lag([100], [90], **{name: invalid})
+
+
+def test_custom_threshold_boundaries_and_empty_samples():
+    assert analyze_consumer_lag([100], [90], warning_lag=10, critical_lag=20)["health"] == "degraded"
+    assert analyze_consumer_lag([100], [80], warning_lag=10, critical_lag=20)["health"] == "critical"
+    assert analyze_consumer_lag([], [], warning_lag=0, critical_lag=1)["health"] == "healthy"
+
+
+def test_equal_thresholds_are_rejected():
+    with pytest.raises(ValueError, match="lag thresholds must be non-negative and increasing"):
+        analyze_consumer_lag([10], [5], warning_lag=5, critical_lag=5)

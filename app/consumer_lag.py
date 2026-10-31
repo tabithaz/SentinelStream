@@ -1,6 +1,11 @@
 from collections.abc import Sequence
 
 
+def _require_non_negative_integer(value: object, name: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"{name} must be a non-negative integer")
+
+
 def analyze_consumer_lag(
     produced_offsets: Sequence[int],
     consumed_offsets: Sequence[int],
@@ -8,7 +13,9 @@ def analyze_consumer_lag(
     critical_lag: int = 500,
 ) -> dict:
     """Evaluate consumer backlog and detect producer or consumer offset resets."""
-    if warning_lag < 0 or critical_lag <= warning_lag:
+    _require_non_negative_integer(warning_lag, "warning_lag")
+    _require_non_negative_integer(critical_lag, "critical_lag")
+    if critical_lag <= warning_lag:
         raise ValueError("lag thresholds must be non-negative and increasing")
     if len(produced_offsets) != len(consumed_offsets):
         raise ValueError("producer and consumer samples must have equal length")
@@ -20,8 +27,9 @@ def analyze_consumer_lag(
     previous_consumed: int | None = None
 
     for produced, consumed in zip(produced_offsets, consumed_offsets):
-        if produced < 0 or consumed < 0:
-            raise ValueError("offsets must be non-negative")
+        for offset in (produced, consumed):
+            if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
+                raise ValueError("offsets must be non-negative integers")
         if consumed > produced:
             raise ValueError("consumer offset cannot exceed producer offset")
 
