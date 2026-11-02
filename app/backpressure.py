@@ -1,10 +1,19 @@
-def analyze_backpressure(produced, processed, queue_capacity):
-    if queue_capacity <= 0:
-        raise ValueError("queue_capacity must be positive")
+from collections.abc import Sequence
+
+def analyze_backpressure(
+    produced: Sequence[int], processed: Sequence[int], queue_capacity: int
+) -> dict:
+    """Measure queue growth and capacity pressure across event windows."""
+    if isinstance(queue_capacity, bool) or not isinstance(queue_capacity, int) or queue_capacity <= 0:
+        raise ValueError("queue_capacity must be a positive integer")
     if len(produced) != len(processed) or not produced:
         raise ValueError("produced and processed must be non-empty and equal length")
-    if any(v < 0 for v in produced + processed):
-        raise ValueError("event counts cannot be negative")
+    if any(
+        isinstance(value, bool) or not isinstance(value, int) or value < 0
+        for samples in (produced, processed)
+        for value in samples
+    ):
+        raise ValueError("event counts must be non-negative integers")
 
     backlog = 0
     peak_backlog = 0

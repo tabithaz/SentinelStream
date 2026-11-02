@@ -1,3 +1,5 @@
+import pytest
+
 from app.backpressure import analyze_backpressure
 
 
@@ -19,8 +21,34 @@ def test_critical_when_queue_nears_capacity():
 
 
 def test_invalid_capacity_rejected():
-    try:
+    with pytest.raises(ValueError, match="queue_capacity must be a positive integer"):
         analyze_backpressure([1], [1], 0)
-        assert False
-    except ValueError:
-        pass
+
+
+@pytest.mark.parametrize("invalid", [True, False, 1.5, "100", None, float("nan"), float("inf"), -1])
+def test_invalid_queue_capacity_rejected(invalid):
+    with pytest.raises(ValueError, match="queue_capacity must be a positive integer"):
+        analyze_backpressure([10], [5], invalid)
+
+
+@pytest.mark.parametrize("invalid", [True, False, 1.5, "5", None, float("nan"), float("inf"), -1])
+@pytest.mark.parametrize("series", ["produced", "processed"])
+def test_invalid_event_counts_rejected(invalid, series):
+    produced = [10, invalid] if series == "produced" else [10, 20]
+    processed = [5, 5] if series == "produced" else [5, invalid]
+    with pytest.raises(ValueError, match="event counts must be non-negative integers"):
+        analyze_backpressure(produced, processed, 100)
+
+
+def test_tuple_and_list_samples_are_supported():
+    result = analyze_backpressure((10, 20), [5, 10], 100)
+    assert result["current_backlog"] == 15
+    assert result["peak_backlog"] == 15
+    assert result["drain_ratio"] == 0.5
+    assert result["status"] == "critical"
+
+
+def test_mismatched_and_empty_samples_are_rejected():
+    for produced, processed in (([], []), ([1], []), ([1], [1, 2])):
+        with pytest.raises(ValueError, match="non-empty and equal length"):
+            analyze_backpressure(produced, processed, 100)
