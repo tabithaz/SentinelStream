@@ -30,9 +30,9 @@ def analyze_backpressure(
     utilization = round((peak_backlog / queue_capacity) * 100, 1)
     drain_ratio = round(total_processed / total_produced, 3) if total_produced else 1.0
 
-    if utilization >= 90 or drain_ratio < 0.75:
+    if peak_backlog * 100 >= 90 * queue_capacity or (total_produced and total_processed * 100 < 75 * total_produced):
         status = "critical"
-    elif utilization >= 60 or drain_ratio < 0.95:
+    elif peak_backlog * 100 >= 60 * queue_capacity or (total_produced and total_processed * 100 < 95 * total_produced):
         status = "degraded"
     else:
         status = "healthy"
