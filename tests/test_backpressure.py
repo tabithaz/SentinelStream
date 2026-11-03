@@ -52,3 +52,26 @@ def test_mismatched_and_empty_samples_are_rejected():
     for produced, processed in (([], []), ([1], []), ([1], [1, 2])):
         with pytest.raises(ValueError, match="non-empty and equal length"):
             analyze_backpressure(produced, processed, 100)
+
+def test_rounded_utilization_does_not_trigger_critical():
+    result = analyze_backpressure([40000], [31004], 10000)
+    assert result["peak_capacity_utilization"] == 90.0
+    assert result["status"] == "degraded"
+
+
+def test_rounded_utilization_does_not_trigger_degraded():
+    result = analyze_backpressure([200000], [194004], 10000)
+    assert result["peak_capacity_utilization"] == 60.0
+    assert result["status"] == "healthy"
+
+
+def test_rounded_drain_ratio_does_not_hide_critical():
+    result = analyze_backpressure([10000], [7499], 100000)
+    assert result["drain_ratio"] == 0.75
+    assert result["status"] == "critical"
+
+
+def test_rounded_drain_ratio_does_not_hide_degraded():
+    result = analyze_backpressure([10000], [9499], 100000)
+    assert result["drain_ratio"] == 0.95
+    assert result["status"] == "degraded"
