@@ -20,7 +20,7 @@ def analyze_duplicate_deliveries(
     if any(
         isinstance(value, bool)
         or not isinstance(value, (int, float))
-        or not math.isfinite(value)
+        or (isinstance(value, float) and not math.isfinite(value))
         for value in thresholds
     ):
         raise ValueError("thresholds must be finite numbers")
