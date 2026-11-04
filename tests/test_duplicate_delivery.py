@@ -48,3 +48,16 @@ def test_rejects_invalid_event_ids(event_ids):
 def test_rejects_invalid_thresholds(warning, critical):
     with pytest.raises(ValueError):
         analyze_duplicate_deliveries(["evt-1"], warning, critical)
+
+
+def test_large_integer_thresholds_do_not_overflow():
+    large = 10**400
+    report = analyze_duplicate_deliveries(["evt-1", "evt-1"], large, large + 1)
+    assert report.duplicate_rate_percent == 50.0
+    assert report.status == "healthy"
+
+
+def test_large_integer_critical_threshold_is_supported():
+    large = 10**400
+    report = analyze_duplicate_deliveries(["evt-1", "evt-1"], 0, large)
+    assert report.status == "degraded"
