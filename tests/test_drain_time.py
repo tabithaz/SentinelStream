@@ -34,3 +34,17 @@ def test_reports_growing_when_processing_cannot_catch_up():
 def test_rejects_invalid_inputs(args):
     with pytest.raises(ValueError):
         analyze_drain_time(*args)
+
+
+def test_accepts_large_integer_time_thresholds():
+    huge = 10 ** 400
+    report = analyze_drain_time(100, 0, 10, warning_seconds=huge, critical_seconds=huge * 2)
+    assert report.status == "healthy"
+    assert report.estimated_drain_seconds == 10.0
+
+
+def test_accepts_large_integer_rates_with_empty_backlog():
+    huge = 10 ** 400
+    report = analyze_drain_time(0, huge, huge)
+    assert report.status == "clear"
+    assert report.net_drain_rate_per_second == 0.0
