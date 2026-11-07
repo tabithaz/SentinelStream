@@ -20,7 +20,7 @@ def analyze_drain_time(
     values = (ingest_rate_per_second, processing_rate_per_second, warning_seconds, critical_seconds)
     if isinstance(backlog_events, bool) or not isinstance(backlog_events, int) or backlog_events < 0:
         raise ValueError("backlog_events must be a non-negative integer")
-    if any(isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) for value in values):
+    if any(isinstance(value, bool) or not isinstance(value, (int, float)) or (isinstance(value, float) and not math.isfinite(value)) for value in values):
         raise ValueError("rates and thresholds must be finite numbers")
     if ingest_rate_per_second < 0 or processing_rate_per_second < 0:
         raise ValueError("rates must be non-negative")
