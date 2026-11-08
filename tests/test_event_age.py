@@ -54,3 +54,14 @@ def test_invalid_critical_thresholds_are_rejected(threshold):
 
 def test_boundary_threshold_is_accepted():
     assert analyze_event_age([60, 61], stale_after_seconds=60, critical_rate_percent=50).status == "critical"
+
+
+def test_large_integer_stale_threshold_is_accepted():
+    report = analyze_event_age([1, 2, 3], stale_after_seconds=10**400)
+    assert report.status == "healthy"
+    assert report.stale_events == 0
+
+
+def test_large_integer_stale_threshold_preserves_comparison():
+    report = analyze_event_age([60, 61], stale_after_seconds=10**400)
+    assert report.stale_events == 0
