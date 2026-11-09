@@ -14,9 +14,15 @@ class ThroughputTrendReport:
 
 
 def _validate_finite_number(value: object, name: str) -> float:
-    if isinstance(value, bool) or not isinstance(value, Real) or not math.isfinite(value):
+    if isinstance(value, bool) or not isinstance(value, Real):
         raise ValueError(f"{name} must be a finite number")
-    return float(value)
+    try:
+        result = float(value)
+    except (OverflowError, ValueError):
+        raise ValueError(f"{name} must be a finite number") from None
+    if not math.isfinite(result):
+        raise ValueError(f"{name} must be a finite number")
+    return result
 
 
 def analyze_throughput_trend(
