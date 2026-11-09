@@ -50,3 +50,13 @@ def test_invalid_rate_is_rejected(invalid_rate):
 def test_invalid_threshold_is_rejected(invalid_threshold):
     with pytest.raises(ValueError, match="warning threshold must be a finite number"):
         analyze_throughput_trend([10.0, 9.0], warning_drop_percent=invalid_threshold)
+
+
+def test_unrepresentable_integer_rate_is_rejected():
+    with pytest.raises(ValueError, match="throughput rate at index 0 must be a finite number"):
+        analyze_throughput_trend([10**1000, 1.0])
+
+
+def test_unrepresentable_integer_threshold_is_rejected():
+    with pytest.raises(ValueError, match="warning threshold must be a finite number"):
+        analyze_throughput_trend([10.0, 9.0], warning_drop_percent=10**1000)
