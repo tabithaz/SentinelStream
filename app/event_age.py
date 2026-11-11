@@ -13,12 +13,21 @@ class EventAgeReport:
     status: str
 
 
+def _valid_age(age):
+    if isinstance(age, bool) or not isinstance(age, (int, float)) or age < 0:
+        return False
+    try:
+        return math.isfinite(float(age))
+    except OverflowError:
+        return False
+
+
 def analyze_event_age(event_ages_seconds: list[float], stale_after_seconds: float = 60.0, critical_rate_percent: float = 20.0) -> EventAgeReport:
     if isinstance(stale_after_seconds, bool) or not isinstance(stale_after_seconds, (int, float)) or (isinstance(stale_after_seconds, float) and not math.isfinite(stale_after_seconds)) or stale_after_seconds <= 0:
         raise ValueError("stale_after_seconds must be a positive finite number")
     if isinstance(critical_rate_percent, bool) or not isinstance(critical_rate_percent, (int, float)) or (isinstance(critical_rate_percent, float) and not math.isfinite(critical_rate_percent)) or not 0 < critical_rate_percent <= 100:
         raise ValueError("critical_rate_percent must be between 0 and 100")
-    if any(isinstance(age, bool) or not isinstance(age, (int, float)) or not math.isfinite(age) or age < 0 for age in event_ages_seconds):
+    if any(not _valid_age(age) for age in event_ages_seconds):
         raise ValueError("event ages must be non-negative finite numbers")
     if not event_ages_seconds:
         return EventAgeReport(0, 0.0, 0.0, 0, 0.0, "no_data")
