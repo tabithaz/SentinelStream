@@ -65,3 +65,19 @@ def test_large_integer_stale_threshold_is_accepted():
 def test_large_integer_stale_threshold_preserves_comparison():
     report = analyze_event_age([60, 61], stale_after_seconds=10**400)
     assert report.stale_events == 0
+
+
+def test_oversized_integer_age_is_rejected_cleanly():
+    with pytest.raises(ValueError, match="event ages"):
+        analyze_event_age([10**400])
+
+
+def test_oversized_integer_in_mixed_stream_is_rejected_cleanly():
+    with pytest.raises(ValueError, match="event ages"):
+        analyze_event_age([1, 10**400, 2])
+
+
+def test_large_representable_integer_age_is_accepted():
+    report = analyze_event_age([10**100])
+    assert report.stale_events == 1
+    assert report.status == "critical"
