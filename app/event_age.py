@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from statistics import median
 import math
 
 
@@ -32,12 +31,20 @@ def analyze_event_age(event_ages_seconds: list[float], stale_after_seconds: floa
     if not event_ages_seconds:
         return EventAgeReport(0, 0.0, 0.0, 0, 0.0, "no_data")
 
+    sorted_ages = sorted(float(age) for age in event_ages_seconds)
+    middle = len(sorted_ages) // 2
+    if len(sorted_ages) % 2:
+        median_age = sorted_ages[middle]
+    else:
+        lower, upper = sorted_ages[middle - 1:middle + 1]
+        median_age = lower + (upper - lower) / 2
+
     stale = sum(age > stale_after_seconds for age in event_ages_seconds)
     stale_rate = stale / len(event_ages_seconds) * 100.0
     status = "critical" if stale_rate >= critical_rate_percent else "degraded" if stale else "healthy"
     return EventAgeReport(
         events=len(event_ages_seconds),
-        median_age_seconds=round(float(median(event_ages_seconds)), 2),
+        median_age_seconds=round(median_age, 2),
         oldest_age_seconds=round(float(max(event_ages_seconds)), 2),
         stale_events=stale,
         stale_rate_percent=round(stale_rate, 2),
