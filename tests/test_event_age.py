@@ -81,3 +81,15 @@ def test_large_representable_integer_age_is_accepted():
     report = analyze_event_age([10**100])
     assert report.stale_events == 1
     assert report.status == "critical"
+
+
+def test_large_finite_ages_have_finite_median():
+    report = analyze_event_age([1e308, 1.6e308])
+    assert report.median_age_seconds == 1.3e308
+    assert report.oldest_age_seconds == 1.6e308
+    assert report.status == "critical"
+
+
+def test_equal_large_ages_do_not_overflow_median():
+    report = analyze_event_age([1e308, 1e308])
+    assert report.median_age_seconds == 1e308
