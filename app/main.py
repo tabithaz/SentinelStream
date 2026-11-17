@@ -341,7 +341,7 @@ async def request_trace(request: Request, call_next):
             {
                 "request_id": request_id,
                 "method": request.method,
-                "path": request.url.path,
+                "path": route_path,
                 "status_code": response.status_code,
                 "duration_ms": duration_ms,
             },
