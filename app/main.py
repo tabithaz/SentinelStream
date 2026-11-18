@@ -408,7 +408,13 @@ async def validation_error_response(
     _request: Request,
     error: RequestValidationError,
 ) -> JSONResponse:
-    return JSONResponse(status_code=422, content={"detail": _json_safe(error.errors())})
+    # Validation errors can include original request values and validator context.
+    # Do not reflect potentially sensitive input in API responses.
+    details = [
+        {key: value for key, value in item.items() if key not in {"input", "ctx", "url"}}
+        for item in error.errors()
+    ]
+    return JSONResponse(status_code=422, content={"detail": _json_safe(details)})
 
 
 @app.get("/health")
