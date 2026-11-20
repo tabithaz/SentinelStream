@@ -22,3 +22,40 @@ def test_invalid_event_does_not_echo_original_payload():
     assert "not-a-timestamp" not in response.text
     assert response.json()["detail"]
     assert all("input" not in item and "ctx" not in item for item in response.json()["detail"])
+
+
+def test_invalid_batch_does_not_echo_nested_event_values():
+    secret = "private-batch-reading-2468"
+    response = TestClient(app).post(
+        "/events/batch",
+        json=[{
+            "source": "sensor-alpha",
+            "metric": "temperature",
+            "value": secret,
+            "timestamp": "invalid-batch-timestamp",
+        }],
+    )
+
+    assert response.status_code == 422
+    assert secret not in response.text
+    assert "invalid-batch-timestamp" not in response.text
+    assert all(
+        not {"input", "ctx", "url"}.intersection(item)
+        for item in response.json()["detail"]
+    )
+
+
+def test_invalid_idempotency_header_does_not_echo_header_value():
+    secret = "private-idempotency-key-2468"
+    response = TestClient(app).post(
+        "/events/batch",
+        headers={"Idempotency-Key": secret + "!"},
+        json=[],
+    )
+
+    assert response.status_code == 422
+    assert secret not in response.text
+    assert all(
+        not {"input", "ctx", "url"}.intersection(item)
+        for item in response.json()["detail"]
+    )
