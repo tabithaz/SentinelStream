@@ -410,10 +410,28 @@ async def validation_error_response(
 ) -> JSONResponse:
     # Validation errors can include original request values and validator context.
     # Do not reflect potentially sensitive input in API responses.
-    details = [
-        {key: value for key, value in item.items() if key not in {"input", "ctx", "url"}}
-        for item in error.errors()
-    ]
+    # Dictionary keys in error locations are user-controlled (for example,
+    # threshold metric names). Preserve documented field names and list indexes,
+    # but do not reflect arbitrary keys in validation responses.
+    safe_fields = {
+        "body", "query", "header", "path", "source", "metric",
+        "correlation_id", "value", "timestamp", "thresholds",
+        "minimum", "maximum", "idempotency_key", "if_match",
+        "change_reason",
+    }
+    details = []
+    for item in error.errors():
+        detail = {
+            key: value
+            for key, value in item.items()
+            if key not in {"input", "ctx", "url"}
+        }
+        detail["loc"] = [
+            segment if isinstance(segment, int) or segment in safe_fields
+            else "[redacted]"
+            for segment in item.get("loc", ())
+        ]
+        details.append(detail)
     return JSONResponse(status_code=422, content={"detail": _json_safe(details)})
 
 
