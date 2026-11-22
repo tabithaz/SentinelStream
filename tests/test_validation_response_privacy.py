@@ -59,3 +59,23 @@ def test_invalid_idempotency_header_does_not_echo_header_value():
         not {"input", "ctx", "url"}.intersection(item)
         for item in response.json()["detail"]
     )
+
+
+def test_invalid_threshold_metric_key_does_not_echo_user_controlled_location():
+    secret = "private-metric-name-13579"
+    response = TestClient(app).put(
+        "/events/thresholds",
+        json={"thresholds": {secret: {"minimum": "invalid", "maximum": 10}}},
+    )
+
+    assert response.status_code == 422
+    assert secret not in response.text
+    assert response.json()["detail"]
+    assert any(
+        "[redacted]" in item.get("loc", [])
+        for item in response.json()["detail"]
+    )
+    assert all(
+        not {"input", "ctx", "url"}.intersection(item)
+        for item in response.json()["detail"]
+    )
